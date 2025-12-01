@@ -26,6 +26,7 @@ interface Bakery {
 export default function MapPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedBakery, setSelectedBakery] = useState<Bakery | null>(null);
+  const [sdkError, setSdkError] = useState<string | null>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const kakaoMapRef = useRef<any>(null);
@@ -107,18 +108,52 @@ export default function MapPage() {
       createMarkers(map, filteredBakeries);
     };
 
-    // 카카오맵 스크립트 로드 확인
-    if (window.kakao && window.kakao.maps) {
-      window.kakao.maps.load(initMap);
-    } else {
+    // 카카오맵 스크립트 로드 확인 (디버그용 로그와 오류 핸들러 추가)
+    const tryLoad = () => {
+      if (window.kakao && window.kakao.maps) {
+        console.debug("Kakao SDK present, calling maps.load");
+        window.kakao.maps.load(initMap);
+        return true;
+      }
+      return false;
+    };
+
+    if (!tryLoad()) {
       const script = document.createElement("script");
-      script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=YOUR_KAKAO_MAP_API_KEY&autoload=false`;
+      // 디버그: env에 키가 있는지 여부를 로그로 남깁니다 (노출 주의)
+      try {
+        console.debug(
+          "VITE_KAKAOMAP_API_KEY present:",
+          !!(import.meta as any).env.VITE_KAKAOMAP_API_KEY
+        );
+      } catch (e) {
+        console.debug("cannot read import.meta.env in this context", e);
+      }
+      // 명시적으로 https 사용하여 프로토콜 관련 문제를 피합니다.
+      script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${
+        (import.meta as any).env.VITE_KAKAOMAP_API_KEY
+      }&autoload=false`;
       script.async = true;
+
       script.onload = () => {
-        if (window.kakao && window.kakao.maps) {
-          window.kakao.maps.load(initMap);
-        }
+        console.debug(
+          "Kakao SDK script.onload fired",
+          !!window.kakao,
+          !!window.kakao?.maps
+        );
+        if (tryLoad()) return;
+        const msg =
+          "Kakao maps SDK loaded but 'window.kakao.maps' is not available.";
+        console.error(msg);
+        setSdkError(msg);
       };
+
+      script.onerror = (e) => {
+        const msg = `Failed to load Kakao SDK script: ${script.src}`;
+        console.error(msg, e);
+        setSdkError(msg);
+      };
+
       document.head.appendChild(script);
     }
   }, []);
@@ -140,7 +175,9 @@ export default function MapPage() {
       const markerContent = `
         <div style="position: relative; cursor: pointer;">
           <div style="
-            background-color: ${selectedBakery?.id === bakery.id ? '#f59e0b' : '#ef4444'};
+            background-color: ${
+              selectedBakery?.id === bakery.id ? "#f59e0b" : "#ef4444"
+            };
             color: white;
             padding: 8px 12px;
             border-radius: 20px;
@@ -160,7 +197,9 @@ export default function MapPage() {
             height: 0;
             border-left: 6px solid transparent;
             border-right: 6px solid transparent;
-            border-top: 6px solid ${selectedBakery?.id === bakery.id ? '#f59e0b' : '#ef4444'};
+            border-top: 6px solid ${
+              selectedBakery?.id === bakery.id ? "#f59e0b" : "#ef4444"
+            };
           "></div>
         </div>
       `;
@@ -233,8 +272,7 @@ export default function MapPage() {
           />
         </div>
         <Button variant="outline" className="gap-2" onClick={handleMyLocation}>
-          <Navigation className="h-4 w-4" />
-          내 위치
+          <Navigation className="h-4 w-4" />내 위치
         </Button>
       </div>
 
@@ -246,14 +284,28 @@ export default function MapPage() {
             className="h-full w-full"
             style={{ minHeight: "500px" }}
           />
-          
+
+          {sdkError && (
+            <div className="absolute top-4 left-4 right-4 z-50">
+              <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-800">
+                <strong>Map load error:</strong> {sdkError}
+                <div className="mt-2 text-xs text-slate-600">
+                  Check the Network tab for the `dapi.kakao.com` request (status
+                  and response). Ensure you are using a JavaScript Key and the
+                  origin (including port) is registered in Kakao Developer
+                  Console (e.g. `http://localhost:3000`).
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* API Key 안내 메시지 */}
           <div className="absolute bottom-4 left-4 rounded-lg bg-white/90 p-3 text-xs shadow-lg backdrop-blur-sm">
             <p className="text-amber-600">
               ⚠️ 카카오맵을 사용하려면 API 키가 필요합니다
             </p>
             <p className="mt-1 text-slate-600">
-              MapPage.tsx 파일의 YOUR_KAKAO_MAP_API_KEY를 
+              MapPage.tsx 파일의 YOUR_KAKAO_MAP_API_KEY를
               <br />
               실제 API 키로 교체해주세요
             </p>
@@ -292,7 +344,9 @@ export default function MapPage() {
                   </div>
                   <Button
                     size="sm"
-                    variant={selectedBakery.isWishlisted ? "default" : "outline"}
+                    variant={
+                      selectedBakery.isWishlisted ? "default" : "outline"
+                    }
                     className={
                       selectedBakery.isWishlisted
                         ? "bg-amber-500 hover:bg-amber-600"
@@ -321,7 +375,9 @@ export default function MapPage() {
               <Card
                 key={bakery.id}
                 className={`cursor-pointer p-3 transition-colors hover:bg-slate-50 ${
-                  selectedBakery?.id === bakery.id ? "border-amber-500 bg-amber-50" : ""
+                  selectedBakery?.id === bakery.id
+                    ? "border-amber-500 bg-amber-50"
+                    : ""
                 }`}
                 onClick={() => {
                   setSelectedBakery(bakery);
