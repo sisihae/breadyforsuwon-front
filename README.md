@@ -219,11 +219,58 @@ Interactive map showing bakeries in Suwon using Kakao Map API.
 
 **Features**:
 
-- Search functionality
-- Filter options (by category, rating, distance)
-- Bakery markers on map
-- Info window on marker click
+- Text search functionality (by bakery name or specialty)
+- **Bread tag filtering** (크루아상, 식빵, 타르트, 카눌레, 소금빵, 단팥빵, 크림빵, 소보로빵, 바게트, 데니쉬)
+- Interactive tag buttons with bakery count badges
+- Real-time map marker updates based on filters
+- Bakery markers on map with custom overlay design
+- Info card on marker/list item click
+- "My Location" button for geolocation
 - Add to wishlist button
+- Responsive three-column layout (map + sidebar)
+
+**State Management**:
+
+```tsx
+const [searchQuery, setSearchQuery] = useState("");
+const [selectedTag, setSelectedTag] = useState<string | null>(null);
+const [selectedBakery, setSelectedBakery] = useState<Bakery | null>(null);
+```
+
+**Bread Tags**:
+
+```tsx
+const BREAD_TAGS = [
+  "크루아상",
+  "식빵",
+  "타르트",
+  "카눌레",
+  "소금빵",
+  "단팥빵",
+  "크림빵",
+  "소보로빵",
+  "바게트",
+  "데니쉬",
+];
+```
+
+**Filtering Logic**:
+
+```tsx
+const filteredBakeries = bakeries.filter((bakery) => {
+  // Text search filter (name or specialty)
+  const matchesSearch =
+    bakery.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    bakery.specialty.toLowerCase().includes(searchQuery.toLowerCase());
+
+  // Bread tag filter
+  const matchesTag = selectedTag
+    ? bakery.breadTags.includes(selectedTag)
+    : true;
+
+  return matchesSearch && matchesTag;
+});
+```
 
 **Required Environment Variables**:
 
@@ -256,16 +303,42 @@ interface Bakery {
   id: string;
   name: string;
   address: string;
-  latitude: number;
-  longitude: number;
-  category: string[];
   rating: number;
-  imageUrl?: string;
-  description?: string;
-  openHours?: string;
-  phone?: string;
+  specialty: string;
+  distance: string;
+  lat: number;
+  lng: number;
+  isWishlisted: boolean;
+  breadTags: string[]; // Array of bread types this bakery offers
 }
 ```
+
+**Example Bakery Data**:
+
+```tsx
+{
+  id: "1",
+  name: "르뱅드마리",
+  address: "경기 수원시 팔달구 행궁로 30",
+  rating: 4.8,
+  specialty: "천연발효빵, 크루아상",
+  distance: "0.5km",
+  lat: 37.2858,
+  lng: 127.0168,
+  isWishlisted: false,
+  breadTags: ["크루아상", "바게트", "데니쉬"]
+}
+```
+
+**UI Components**:
+
+- Search input with text filtering
+- Bread tag filter buttons (10 types) with count badges
+- Toggle selection by clicking tag buttons
+- Interactive Kakao map with custom markers
+- Bakery list sidebar with click-to-select
+- Selected bakery info card overlay
+- "My Location" button for geolocation
 
 ---
 

@@ -138,7 +138,9 @@ export default function MapPage() {
       window.kakao.maps.load(initMap);
     } else {
       const script = document.createElement("script");
-      script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=YOUR_KAKAO_MAP_API_KEY&autoload=false`;
+      script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${
+        import.meta.env.VITE_KAKAOMAP_API_KEY
+      }&autoload=false`;
       script.async = true;
       script.onload = () => {
         if (window.kakao && window.kakao.maps) {

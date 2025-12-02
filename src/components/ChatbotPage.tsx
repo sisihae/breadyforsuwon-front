@@ -47,7 +47,8 @@ export default function ChatbotPage() {
     {
       id: "1",
       role: "assistant",
-      content: "안녕하세요! 수원 빵집 추천 챗봇입니다. 어떤 빵집을 찾으시나요? 예를 들어 '크루아상 맛집' 또는 '행궁동 근처 베이커리'처럼 물어보세요!",
+      content:
+        "안녕하세요! 수원 빵집 추천 챗봇입니다. 어떤 빵집을 찾으시나요? 예를 들어 '크루아상 맛집' 또는 '행궁동 근처 베이커리'처럼 물어보세요!",
       timestamp: new Date(),
     },
   ]);
@@ -102,7 +103,8 @@ export default function ChatbotPage() {
       {
         id: "1",
         role: "assistant",
-        content: "안녕하세요! 수원 빵집 추천 챗봇입니다. 어떤 빵집을 찾으시나요? 예를 들어 '크루아상 맛집' 또는 '행궁동 근처 베이커리'처럼 물어보세요!",
+        content:
+          "안녕하세요! 수원 빵집을 추천해드리는 Bready입니다. 어떤 빵집을 찾으시나요? 예를 들어 '비건 디저트 맛집' 또는 '분위기 좋은 베이커리카페'처럼 물어보세요!",
         timestamp: new Date(),
       },
     ]);
@@ -126,8 +128,7 @@ export default function ChatbotPage() {
             onClick={handleNewChat}
             className="w-full gap-2 bg-amber-500 hover:bg-amber-600"
           >
-            <Plus className="h-4 w-4" />
-            새 채팅 시작
+            <Plus className="h-4 w-4" />새 채팅 시작
           </Button>
         </div>
 
@@ -184,7 +185,9 @@ export default function ChatbotPage() {
       <div className="flex flex-1 flex-col">
         <div className="mb-4">
           <h2 className="text-slate-900 dark:text-slate-100">AI 챗봇</h2>
-          <p className="text-slate-600 dark:text-slate-400">원하는 빵집을 물어보세요</p>
+          <p className="text-slate-600 dark:text-slate-400">
+            원하는 빵집을 물어보세요
+          </p>
         </div>
 
         <Card className="flex flex-1 flex-col overflow-hidden dark:border-slate-700 dark:bg-slate-800">
@@ -245,7 +248,10 @@ export default function ChatbotPage() {
                 placeholder="빵집에 대해 물어보세요... (예: 크루아상 맛집 추천해줘)"
                 className="flex-1 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
               />
-              <Button onClick={handleSend} className="bg-amber-500 hover:bg-amber-600">
+              <Button
+                onClick={handleSend}
+                className="bg-amber-500 hover:bg-amber-600"
+              >
                 <Send className="h-4 w-4" />
               </Button>
             </div>

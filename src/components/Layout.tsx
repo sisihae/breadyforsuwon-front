@@ -1,5 +1,14 @@
 import { Outlet, NavLink } from "react-router";
-import { MessageCircle, Map, Heart, BookOpen, User, Moon, Sun, LogOut } from "lucide-react";
+import {
+  MessageCircle,
+  Map,
+  Heart,
+  BookOpen,
+  User,
+  Moon,
+  Sun,
+  LogOut,
+} from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { useAuth } from "./AuthContext";
 import { Switch } from "./ui/switch";
@@ -9,13 +18,13 @@ import { Button } from "./ui/button";
 export default function Layout() {
   const { theme, toggleTheme } = useTheme();
   const { isLoggedIn, user, logout } = useAuth();
-  
+
   const navItems = [
-    { path: "/chatbot", icon: MessageCircle, label: "챗봇" },
-    { path: "/map", icon: Map, label: "지도 및 검색" },
-    { path: "/wishlist", icon: Heart, label: "위시리스트" },
-    { path: "/visited", icon: BookOpen, label: "방문 기록" },
-    { path: "/mypage", icon: User, label: "마이페이지" },
+    { path: "/chatbot", icon: MessageCircle, label: "AI Chat" },
+    { path: "/map", icon: Map, label: "Map & Search" },
+    { path: "/wishlist", icon: Heart, label: "Wishlist" },
+    { path: "/visited", icon: BookOpen, label: "Visited" },
+    { path: "/mypage", icon: User, label: "My Page" },
   ];
 
   return (
@@ -27,13 +36,19 @@ export default function Layout() {
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500 md:h-10 md:w-10">
               <span className="text-lg md:text-xl">🥐</span>
             </div>
-            <h1 className="text-amber-700 dark:text-amber-500">Bready for Suwon</h1>
+            <h1 className="text-amber-700 dark:text-amber-500">
+              Bready for Suwon
+            </h1>
           </div>
           <div className="flex items-center gap-2 md:gap-4">
-            <p className="hidden text-slate-600 dark:text-slate-300 lg:block">Always be ready with Bready!</p>
+            <p className="hidden text-slate-600 dark:text-slate-300 lg:block">
+              Always be ready with Bready!
+            </p>
             {isLoggedIn && user && (
               <div className="flex items-center gap-2">
-                <span className="hidden text-sm text-slate-600 dark:text-slate-400 sm:inline">{user.name}님</span>
+                <span className="hidden text-sm text-slate-600 dark:text-slate-400 sm:inline">
+                  {user.name}님
+                </span>
                 <Button
                   variant="ghost"
                   size="sm"
