@@ -455,29 +455,43 @@ interface LoginPromptProps {
 
 **Features**:
 
-- Kakao login button
+- Kakao OAuth login button
 - Login explanation
 - Responsive design
 
-**Kakao Login Integration**:
+**Kakao OAuth Login Flow**:
 
 ```tsx
-// Initialize Kakao SDK
-Kakao.init("YOUR_KAKAO_APP_KEY");
+const handleKakaoLogin = async () => {
+  try {
+    // Step 1: Get Kakao OAuth authorize URL from backend
+    const response = await fetch("/auth/kakao/login");
+    const data = await response.json();
 
-// Login
-Kakao.Auth.login({
-  success: (authObj) => {
-    // Get user info
-    Kakao.API.request({
-      url: "/v2/user/me",
-      success: (res) => {
-        // Handle user data
-      },
-    });
-  },
-});
+    // Step 2: Redirect user to Kakao OAuth page
+    window.location.href = data.authorize_url;
+
+    // Step 3: Kakao redirects back to /auth/kakao/callback with code
+    // Step 4: Backend exchanges code for token and sets session cookie
+    // Step 5: Backend redirects user back to frontend
+  } catch (error) {
+    console.error("Login failed:", error);
+  }
+};
 ```
+
+**Authentication Flow**:
+
+1. User clicks "Login with Kakao" button
+2. Frontend calls `GET /auth/kakao/login` to get OAuth URL
+3. User is redirected to Kakao authorization page
+4. User approves and Kakao redirects to `GET /auth/kakao/callback?code=...`
+5. Backend exchanges code for access token
+6. Backend fetches user profile from Kakao API
+7. Backend creates/finds user in database
+8. Backend sets HTTP-only session cookie (JWT, 7 days)
+9. Backend redirects user back to frontend
+10. Frontend checks session status and updates auth state
 
 ---
 
@@ -713,55 +727,99 @@ useEffect(() => {
 
 **Documentation**: https://developers.kakao.com/docs/latest/ko/kakaologin/rest-api
 
+**Authentication Method**: Kakao OAuth 2.0 with HTTP-only session cookies
+
 **Setup**:
 
-1. Create Kakao Developers App
-2. Get JavaScript key
-3. Initialize SDK:
+1. Create Kakao Developers App at https://developers.kakao.com
+2. Configure OAuth redirect URI in Kakao console
+3. Set up backend environment variables:
+   - `KAKAO_CLIENT_ID`: Your Kakao app client ID
+   - `KAKAO_CLIENT_SECRET`: Your Kakao app client secret
+   - `KAKAO_REDIRECT_URI`: OAuth callback URL (e.g., `http://localhost:3000/auth/kakao/callback`)
 
-```html
-<script src="https://developers.kakao.com/sdk/js/kakao.js"></script>
-<script>
-  Kakao.init("YOUR_JAVASCRIPT_KEY");
-</script>
-```
+**OAuth Flow**:
 
-**Login Flow**:
+**Step 1: Initiate Login**
 
 ```tsx
-const handleKakaoLogin = () => {
-  Kakao.Auth.login({
-    success: (authObj) => {
-      console.log(authObj);
-      Kakao.API.request({
-        url: "/v2/user/me",
-        success: (res) => {
-          const userData = {
-            id: res.id,
-            name: res.properties.nickname,
-            email: res.kakao_account.email,
-            profileImage: res.properties.profile_image,
-          };
-          login(userData);
-        },
-      });
-    },
-    fail: (err) => {
-      console.error(err);
-    },
-  });
+// Frontend: Get OAuth authorize URL
+const handleKakaoLogin = async () => {
+  try {
+    const response = await fetch("/auth/kakao/login", {
+      credentials: "include", // Include cookies
+    });
+    const data = await response.json();
+
+    // Redirect to Kakao OAuth page
+    window.location.href = data.authorize_url;
+  } catch (error) {
+    console.error("Login failed:", error);
+  }
 };
+```
+
+**Step 2: Backend Callback Handling**
+
+```tsx
+// After user approves on Kakao, Kakao redirects to:
+// GET /auth/kakao/callback?code=AUTHORIZATION_CODE
+
+// Backend:
+// 1. Exchanges code for access token
+// 2. Fetches user profile from Kakao API
+// 3. Creates/finds user in database
+// 4. Generates JWT session token
+// 5. Sets HTTP-only cookie
+// 6. Redirects user back to frontend
+```
+
+**Step 3: Session Management**
+
+```tsx
+// Frontend: Check session status on app load
+useEffect(() => {
+  const checkSession = async () => {
+    try {
+      const response = await fetch("/api/auth/session", {
+        credentials: "include",
+      });
+      if (response.ok) {
+        const userData = await response.json();
+        login(userData);
+      }
+    } catch (error) {
+      console.error("Session check failed:", error);
+    }
+  };
+
+  checkSession();
+}, []);
 ```
 
 **Logout**:
 
 ```tsx
-const handleKakaoLogout = () => {
-  Kakao.Auth.logout(() => {
-    logout();
-  });
+const handleLogout = async () => {
+  try {
+    await fetch("/auth/logout", {
+      method: "POST",
+      credentials: "include",
+    });
+    logout(); // Clear frontend auth state
+  } catch (error) {
+    console.error("Logout failed:", error);
+  }
 };
 ```
+
+**Session Cookie Details**:
+
+- Cookie name: `session`
+- Type: JWT token
+- Attributes: `HttpOnly`, `SameSite=lax`
+- Max-Age: 7 days (604800 seconds)
+- Secure: `true` (production only)
 
 ---
 
@@ -899,11 +957,76 @@ VITE_PINECONE_INDEX=bakery-index
 
 ### Authentication
 
+**Login with Kakao OAuth**
+
 ```
-POST /api/auth/kakao
-Body: { code: string, redirectUri: string }
-Response: { user: User, token: string }
+GET /auth/kakao/login
+Description: Returns the Kakao OAuth authorize URL for the frontend to redirect users to.
+
+Response:
+{
+  "authorize_url": "https://kauth.kakao.com/oauth/authorize?client_id=...&redirect_uri=...&response_type=code"
+}
 ```
+
+**Kakao OAuth Callback**
+
+```
+GET /auth/kakao/callback
+Query Parameters:
+  - code (string, required): Authorization code from Kakao
+
+Description:
+  - Exchanges authorization code for access token
+  - Fetches user profile from Kakao API
+  - Creates/finds user in database
+  - Sets HTTP-only session cookie
+  - Redirects to frontend URL
+
+Response: Redirects to frontend with session cookie set
+
+Cookie:
+  - Name: session
+  - Value: JWT token
+  - HttpOnly: true
+  - SameSite: lax
+  - Max-Age: 604800 (7 days)
+  - Secure: true (production only)
+```
+
+**Logout**
+
+```
+POST /auth/logout
+Description: Clears the session cookie to log out the user.
+
+Response:
+{
+  "ok": true
+}
+```
+
+**Check Session**
+
+```
+GET /api/auth/session
+Headers: Cookie: session=<jwt_token>
+Description: Verifies session cookie and returns current user data.
+
+Response (authenticated):
+{
+  "id": "user_123",
+  "name": "홍길동",
+  "email": "user@example.com",
+  "profileImage": "https://...",
+  "kakaoId": "kakao_id"
+}
+
+Response (unauthenticated):
+Status: 401 Unauthorized
+```
+
+---
 
 ### Chatbot
 
@@ -912,6 +1035,8 @@ POST /api/chatbot/query
 Body: { message: string, userId?: string }
 Response: { response: string, relatedBakeries?: Bakery[] }
 ```
+
+---
 
 ### Bakeries
 
@@ -923,6 +1048,8 @@ Response: { bakeries: Bakery[] }
 GET /api/bakeries/:id
 Response: { bakery: Bakery }
 ```
+
+---
 
 ### Wishlist
 
@@ -939,6 +1066,8 @@ DELETE /api/wishlist/:bakeryId
 Headers: { Authorization: Bearer <token> }
 Response: { success: boolean }
 ```
+
+---
 
 ### Visit History
 
@@ -957,6 +1086,8 @@ Headers: { Authorization: Bearer <token> }
 Body: { rating?: number, review?: string }
 Response: { visit: VisitRecord }
 ```
+
+---
 
 ### User Profile
 
