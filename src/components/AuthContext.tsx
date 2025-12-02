@@ -11,9 +11,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [user, setUser] = useState<{ name: string; email: string } | null>(
-    null
-  );
+  const [user, setUser] = useState<{ name: string; email: string } | null>(null);
 
   const login = (email: string, password: string) => {
     // 데모용 로그인 (실제로는 서버 인증 필요)
