@@ -1,0 +1,850 @@
+# BreadyForSuwon API Documentation
+
+## Overview
+
+BreadyForSuwon is a RAG-powered bakery recommendation chatbot backend for exploring bakeries in Suwon. It provides user authentication, bakery search, wishlist management, visit record tracking, and chat history.
+
+**Base URL:** `http://localhost:8000/api/v1`
+
+---
+
+## Authentication
+
+### Login with Kakao OAuth
+
+**Endpoint:** `GET /auth/kakao/login`
+
+**Description:** Returns the Kakao OAuth authorize URL for the frontend to redirect users to.
+
+**Response:**
+
+```json
+{
+  "authorize_url": "https://kauth.kakao.com/oauth/authorize?client_id=...&redirect_uri=...&response_type=code"
+}
+```
+
+---
+
+### Kakao OAuth Callback
+
+**Endpoint:** `GET /auth/kakao/callback`
+
+**Query Parameters:**
+
+- `code` (string, required): Authorization code from Kakao
+
+**Description:** Exchanges authorization code for access token, fetches user profile, creates/finds user in DB, and sets HTTP-only session cookie.
+
+**Response:** Redirects to frontend URL with session cookie set.
+
+**Cookie:**
+
+- `session`: JWT token (HttpOnly, SameSite=lax)
+- Max-Age: 7 days
+
+---
+
+### Logout
+
+**Endpoint:** `POST /auth/logout`
+
+**Description:** Clears the session cookie to log out the user.
+
+**Response:**
+
+```json
+{
+  "ok": true
+}
+```
+
+---
+
+### Get Current User Profile
+
+**Endpoint:** `GET /me`
+
+**Authentication:** Required (session cookie)
+
+**Description:** Returns current user profile with visit records count and wishlist count.
+
+**Response:**
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "email": "user@example.com",
+  "name": "John Doe",
+  "created_at": "2025-12-01T10:00:00",
+  "visit_records_count": 5,
+  "wishlist_count": 3
+}
+```
+
+---
+
+## Bakeries
+
+### Get All Bakeries
+
+**Endpoint:** `GET /bakeries`
+
+**Query Parameters:**
+
+- `district` (string, optional): Filter by district (e.g., "영통구", "팔달구")
+- `rating` (float, optional): Minimum rating filter (1.0-5.0)
+- `limit` (integer, optional, default=100, max=1000): Number of records to return
+
+**Description:** Returns list of all bakeries with optional filters.
+
+**Response:**
+
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "르뱅드마리",
+    "address": "경기 수원시 팔달구 행궁로 30",
+    "district": "팔달구",
+    "rating": 4.8
+  }
+]
+```
+
+---
+
+### Get Bakery by ID
+
+**Endpoint:** `GET /bakeries/{bakery_id}`
+
+**Path Parameters:**
+
+- `bakery_id` (UUID): Bakery ID
+
+**Response:**
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "르뱅드마리",
+  "address": "경기 수원시 팔달구 행궁로 30",
+  "rating": 4.8,
+  "bread_tags": ["Croissant", "Sourdough"]
+}
+```
+
+---
+
+### Search Bakeries
+
+**Endpoint:** `GET /bakeries/search`
+
+**Query Parameters:**
+
+- `name` (string, optional): Search by bakery name (partial match)
+- `tag` (string, optional): Search by bread tag (e.g., "크로아상", "식빵", "파이")
+- `limit` (integer, optional, default=10, max=100): Number of results to return
+
+**Description:** Search bakeries by name or bread tag. Provide either `name` or `tag` parameter. If both are provided, name takes precedence.
+
+**Example Requests:**
+
+```
+GET /bakeries/search?name=르뱅
+GET /bakeries/search?tag=크로아상
+GET /bakeries/search?tag=크로아상&limit=5
+```
+
+**Response:**
+
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "르뱅드마리",
+    "address": "경기 수원시 팔달구 행궁로 30",
+    "district": "팔달구",
+    "rating": 4.8,
+    "bread_tags": ["크로아상", "도넛"]
+  }
+]
+```
+
+**Error Response (400):**
+
+```json
+{
+  "detail": "Either 'name' or 'tag' parameter is required"
+}
+```
+
+---
+
+## Bread Tags
+
+### Get All Bread Tags
+
+**Endpoint:** `GET /tags`
+
+**Description:** Returns list of all available bread tags/types.
+
+**Response:**
+
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "Croissant"
+  },
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440001",
+    "name": "Sourdough"
+  }
+]
+```
+
+---
+
+### Get Bakeries by Tag
+
+**Endpoint:** `GET /tags/{tag_name}/bakeries`
+
+**Path Parameters:**
+
+- `tag_name` (string): Name of the bread tag
+
+**Description:** Returns list of bakeries that sell a specific bread type.
+
+**Response:**
+
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "르뱅드마리",
+    "address": "경기 수원시 팔달구 행궁로 30",
+    "rating": 4.8,
+    "bread_tags": ["크루아상", "도넛"]
+  }
+]
+```
+
+---
+
+## Chat & Search
+
+### Chat with RAG Bot
+
+**Endpoint:** `POST /chat`
+
+**Authentication:** Optional
+
+**Request Body:**
+
+```json
+{
+  "message": "수원에서 맛있는 크루아상 파는 빵집 추천해줘",
+  "context_count": 5
+}
+```
+
+**Fields:**
+
+- `message` (string, required): User's question or request
+- `context_count` (integer, optional, default=5, range=1-20): Number of bakeries to use as context
+
+**Description:** Sends a message to the RAG chatbot powered by OpenAI GPT-4 and Weaviate vector search. Returns AI-generated response with relevant bakery recommendations.
+
+**Response:**
+
+```json
+{
+  "response": "수원에서 크루아상을 파는 빵집 중에 르뱅드마리가 유명합니다. 팔달구에 위치해 있으며...",
+  "recommendations": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "르뱅드마리",
+      "address": "경기 수원시 팔달구 행궁로 30",
+      "district": "팔달구",
+      "rating": 4.8,
+      "bread_tags": ["크루아상", "도넛"],
+      "similarity_score": 0.92,
+      "relevance_reason": "쿼리와 92.0% 유사도"
+    }
+  ],
+  "sources_used": ["르뱅드마리", "빵공장"]
+}
+```
+
+**Error Response (400):**
+
+```json
+{
+  "detail": "WEAVIATE_URL is not configured. Please set it in your .env file or environment variables."
+}
+```
+
+**Error Response (500):**
+
+```json
+{
+  "detail": "Failed to process chat: [error details]"
+}
+```
+
+---
+
+### Get Chat History List
+
+**Endpoint:** `GET /chat/history`
+
+**Authentication:** Optional
+
+**Query Parameters:**
+
+- `limit` (integer, optional, default=100): Number of recent records to return
+
+**Description:** Returns recent chat history entries with metadata.
+
+**Response:**
+
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "user_message": "수원 빵집 추천해줘",
+    "bot_response": "수원에는 다양한 빵집이 있습니다...",
+    "metadata_json": {
+      "sources": [...],
+      "bread_tags": ["Croissant"],
+      "bakery_ids": ["550e8400-e29b-41d4-a716-446655440001"]
+    },
+    "created_at": "2025-12-01T10:00:00"
+  }
+]
+```
+
+---
+
+### Get Chat History by ID
+
+**Endpoint:** `GET /chat/history/{id}`
+
+**Authentication:** Optional
+
+**Path Parameters:**
+
+- `id` (UUID): Chat history ID
+
+**Description:** Returns a specific chat history entry by ID.
+
+**Response:**
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "user_message": "수원 빵집 추천해줘",
+  "bot_response": "수원에는 다양한 빵집이 있습니다...",
+  "metadata_json": {
+    "sources": [...],
+    "bread_tags": ["Croissant"],
+    "bakery_ids": ["550e8400-e29b-41d4-a716-446655440001"]
+  },
+  "created_at": "2025-12-01T10:00:00"
+}
+```
+
+**Error Response (404):**
+
+```json
+{
+  "detail": "Chat history not found"
+}
+```
+
+---
+
+### Delete Chat History
+
+**Endpoint:** `DELETE /chat/history/{id}`
+
+**Authentication:** Optional
+
+**Path Parameters:**
+
+- `id` (UUID): Chat history ID
+
+**Description:** Deletes a specific chat history entry by ID.
+
+**Response:** 204 No Content (empty response on success)
+
+**Error Response (404):**
+
+```json
+{
+  "detail": "Chat history not found"
+}
+```
+
+---
+
+## Wishlist
+
+### Get All Wishlist Items
+
+**Endpoint:** `GET /wishlist`
+
+**Authentication:** Required (session cookie)
+
+**Description:** Returns all wishlist items for the current user.
+
+**Response:**
+
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "user_id": "550e8400-e29b-41d4-a716-446655440001",
+    "bakery_id": "550e8400-e29b-41d4-a716-446655440002",
+    "bakery_name": "르뱅드마리",
+    "bakery_address": "경기 수원시 팔달구 행궁로 30",
+    "bread_types": ["Croissant", "Sourdough"],
+    "note": null,
+    "visited": false,
+    "created_at": "2025-12-01T10:00:00",
+    "updated_at": "2025-12-01T10:00:00"
+  }
+]
+```
+
+---
+
+### Create Wishlist Item
+
+**Endpoint:** `POST /wishlist`
+
+**Authentication:** Required (session cookie)
+
+**Request Body:**
+
+```json
+{
+  "bakery_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**Description:** Adds a bakery to the current user's wishlist.
+
+**Response:** Same as Get Wishlist Item above.
+
+---
+
+### Update Wishlist Item
+
+**Endpoint:** `PATCH /wishlist/{item_id}`
+
+**Authentication:** Required (session cookie)
+
+**Path Parameters:**
+
+- `item_id` (UUID): Wishlist item ID
+
+**Request Body:**
+
+```json
+{
+  "note": "친구 추천 빵집",
+  "visited": true
+}
+```
+
+**Description:** Updates note and/or visited status of a wishlist item.
+
+**Response:** Same as Get Wishlist Item above.
+
+---
+
+### Delete Wishlist Item
+
+**Endpoint:** `DELETE /wishlist/{item_id}`
+
+**Authentication:** Required (session cookie)
+
+**Path Parameters:**
+
+- `item_id` (UUID): Wishlist item ID
+
+**Description:** Removes a bakery from the current user's wishlist.
+
+**Response:**
+
+```json
+{
+  "ok": true
+}
+```
+
+---
+
+## Visit Records
+
+### Get All Visit Records
+
+**Endpoint:** `GET /visit-records`
+
+**Authentication:** Required (session cookie)
+
+**Description:** Returns all visit records for the current user, sorted by visit date (most recent first).
+
+**Response:**
+
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "user_id": "550e8400-e29b-41d4-a716-446655440001",
+    "bakery_id": "550e8400-e29b-41d4-a716-446655440002",
+    "bakery_name": "르뱅드마리",
+    "bakery_address": "경기 수원시 팔달구 행궁로 30",
+    "visit_date": "2025-12-02",
+    "rating": 5,
+    "bread_purchased": "크루아상, 바게트",
+    "review": "정말 맛있었어요!",
+    "created_at": "2025-12-02T10:00:00",
+    "updated_at": "2025-12-02T10:00:00"
+  }
+]
+```
+
+---
+
+### Create Visit Record
+
+**Endpoint:** `POST /visit-records`
+
+**Authentication:** Required (session cookie)
+
+**Request Body:**
+
+```json
+{
+  "bakery_id": "550e8400-e29b-41d4-a716-446655440000",
+  "visit_date": "2025-12-02",
+  "rating": 5,
+  "bread_purchased": "크루아상, 바게트",
+  "review": "정말 맛있었어요!"
+}
+```
+
+**Description:** Creates a new visit record for a bakery.
+
+**Response:** Same as Get Visit Records above.
+
+---
+
+### Update Visit Record
+
+**Endpoint:** `PATCH /visit-records/{record_id}`
+
+**Authentication:** Required (session cookie)
+
+**Path Parameters:**
+
+- `record_id` (UUID): Visit record ID
+
+**Request Body:**
+
+```json
+{
+  "rating": 4,
+  "review": "다시 가고 싶어요!"
+}
+```
+
+**Description:** Updates visit date, rating, bread purchased, and/or review.
+
+**Response:** Same as Get Visit Records above.
+
+---
+
+### Delete Visit Record
+
+**Endpoint:** `DELETE /visit-records/{record_id}`
+
+**Authentication:** Required (session cookie)
+
+**Path Parameters:**
+
+- `record_id` (UUID): Visit record ID
+
+**Description:** Deletes a visit record.
+
+**Response:**
+
+```json
+{
+  "ok": true
+}
+```
+
+---
+
+## Error Responses
+
+All endpoints return standard HTTP error codes with descriptive messages:
+
+### 400 Bad Request
+
+```json
+{
+  "detail": "Invalid request parameters"
+}
+```
+
+### 401 Unauthorized
+
+```json
+{
+  "detail": "Not authenticated"
+}
+```
+
+### 403 Forbidden
+
+```json
+{
+  "detail": "Cannot modify another user's data"
+}
+```
+
+### 404 Not Found
+
+```json
+{
+  "detail": "Resource not found"
+}
+```
+
+### 500 Internal Server Error
+
+```json
+{
+  "detail": "Internal server error"
+}
+```
+
+---
+
+## Data Models
+
+### User
+
+- `id` (UUID): Unique identifier
+- `kakao_id` (string, optional): Kakao account ID
+- `email` (string, optional): Email address
+- `name` (string, optional): User display name
+- `created_at` (datetime): Account creation timestamp
+
+### Bakery
+
+- `id` (UUID): Unique identifier
+- `name` (string): Bakery name
+- `address` (string): Bakery address
+- `rating` (float): Average rating (1-5)
+- `bread_tags` (array): List of bread types sold
+
+### BreadTag
+
+- `id` (UUID): Unique identifier
+- `name` (string): Tag name (e.g., "Croissant")
+
+### WishlistItem
+
+- `id` (UUID): Unique identifier
+- `user_id` (UUID): Owner user ID
+- `bakery_id` (UUID): Associated bakery ID
+- `note` (string, optional): User's note
+- `visited` (boolean): Whether user has visited
+- `created_at` (datetime): Creation timestamp
+- `updated_at` (datetime): Last update timestamp
+
+### BakeryVisitRecord
+
+- `id` (UUID): Unique identifier
+- `user_id` (UUID): Owner user ID
+- `bakery_id` (UUID): Associated bakery ID
+- `visit_date` (date): Date of visit
+- `rating` (integer): Rating from 1-5
+- `bread_purchased` (string, optional): Description of bread purchased
+- `review` (string, optional): User's review
+- `created_at` (datetime): Creation timestamp
+- `updated_at` (datetime): Last update timestamp
+
+### ChatHistory
+
+- `id` (UUID): Unique identifier
+- `user_message` (string): User's chat message
+- `bot_response` (string): Bot's response
+- `metadata_json` (object): Contains sources, bread_tags, bakery_ids
+- `created_at` (datetime): Creation timestamp
+
+---
+
+## Pagination
+
+List endpoints support optional pagination parameters:
+
+- `skip` (integer, default=0): Number of records to skip
+- `limit` (integer, default=10): Number of records to return
+
+Example:
+
+```
+GET /bakeries?skip=10&limit=20
+```
+
+---
+
+## Authentication Details
+
+### Session Cookie
+
+- **Name:** `session` (configurable)
+- **Value:** JWT token containing user ID
+- **HttpOnly:** True (prevents JavaScript access)
+- **Secure:** True in production, False in development
+- **SameSite:** `lax`
+- **Max-Age:** 604800 seconds (7 days)
+
+### How to Authenticate
+
+1. Call `GET /auth/kakao/login` to get authorize URL
+2. Redirect user to Kakao authorize URL
+3. After user consents, Kakao redirects to callback
+4. Backend creates user and sets session cookie
+5. Include session cookie in all authenticated requests
+
+---
+
+## Rate Limiting
+
+Currently no rate limiting is enforced. Future versions may implement request throttling.
+
+---
+
+## Environment Variables
+
+Configure via `.env` file:
+
+```
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5432/breadyforsuwon
+
+# JWT
+JWT_SECRET=your_secret_key
+JWT_ALGORITHM=HS256
+JWT_EXP_SECONDS=604800
+SESSION_COOKIE_NAME=session
+
+# Kakao OAuth
+KAKAO_CLIENT_ID=your_client_id
+KAKAO_CLIENT_SECRET=your_client_secret
+KAKAO_REDIRECT_URI=http://localhost:3000/auth/kakao/callback
+FRONTEND_URL=http://localhost:3000
+
+# App
+DEBUG=True
+API_V1_PREFIX=/api/v1
+
+# OpenAI (for LLM and Embeddings)
+OPENAI_API_KEY=your_api_key
+OPENAI_MODEL=gpt-4
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+
+# Weaviate (Vector DB)
+WEAVIATE_URL=http://weaviate:8080
+WEAVIATE_CLASS_NAME=Bakery
+```
+
+---
+
+## Testing
+
+Run all tests:
+
+```bash
+pytest -q
+```
+
+Run specific test file:
+
+```bash
+pytest -q tests/test_auth.py
+pytest -q tests/test_wishlist.py
+pytest -q tests/test_visit_records.py
+pytest -q tests/test_me.py
+```
+
+---
+
+## Development
+
+### Start Server (Local)
+
+```bash
+# Activate virtual environment
+source .venv/Scripts/activate  # Windows Git Bash
+source .venv/bin/activate      # Linux/Mac
+
+# Run server
+uvicorn app.main:app --reload
+```
+
+### Start Server (Docker)
+
+```bash
+# Start all services (PostgreSQL, Weaviate, Backend)
+docker-compose up -d --build
+
+# View logs
+docker-compose logs -f backend
+
+# Stop services
+docker-compose down
+```
+
+### View API Docs
+
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+
+---
+
+## Architecture
+
+### Tech Stack
+
+- **Framework:** FastAPI 0.104.1
+- **Database:** PostgreSQL 16 (via Docker)
+- **Vector Database:** Weaviate (via Docker)
+- **LLM:** OpenAI GPT-4
+- **Embeddings:** OpenAI text-embedding-3-small (1536 dimensions)
+- **Authentication:** Kakao OAuth 2.0 + JWT sessions
+- **Deployment:** Docker Compose
+
+### RAG Pipeline
+
+1. User query → Generate embedding via OpenAI
+2. Vector search in Weaviate (semantic similarity)
+3. Retrieve top-k bakeries from PostgreSQL
+4. Context + query → GPT-4 for response generation
+5. Return response with bakery recommendations
+
+---
+
+## Version
+
+- **API Version:** v1
+- **Vector DB:** Weaviate (migrated from Pinecone on December 4, 2025)
+- **Last Updated:** December 4, 2025

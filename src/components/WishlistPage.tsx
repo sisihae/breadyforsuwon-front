@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Heart, MapPin, Star, Trash2, Calendar, Edit2, Check, X } from "lucide-react";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
@@ -12,13 +12,13 @@ import {
 } from "./ui/select";
 import { useAuth } from "./AuthContext";
 import LoginPrompt from "./LoginPrompt";
+import { wishlistAPI, WishlistItem as APIWishlistItem } from "../utils/api-service";
 
-interface WishlistItem {
+interface WishlistItemDisplay {
   id: string;
   bakeryName: string;
   address: string;
   specialty: string;
-  rating: number;
   addedDate: Date;
   notes: string;
   visited: boolean;
@@ -33,49 +33,60 @@ export default function WishlistPage() {
   const [filter, setFilter] = useState<"all" | "visited" | "unvisited">("all");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editedNote, setEditedNote] = useState<string>("");
-  const [wishlist, setWishlist] = useState<WishlistItem[]>([
-    {
-      id: "1",
-      bakeryName: "르뱅드마리",
-      address: "경기 수원시 팔달구 행궁로 30",
-      specialty: "천연발효빵, 크루아상",
-      rating: 4.8,
-      addedDate: new Date("2024-11-15"),
-      notes: "크루아상 꼭 먹어보기!",
-      visited: false,
-    },
-    {
-      id: "2",
-      bakeryName: "베이커리카페 밀",
-      address: "경기 수원시 영통구 광교중앙로 248",
-      specialty: "소금빵, 카눌레",
-      rating: 4.6,
-      addedDate: new Date("2024-11-20"),
-      notes: "아침 일찍 방문 예정",
-      visited: false,
-    },
-    {
-      id: "3",
-      bakeryName: "수제빵공방 온",
-      address: "경기 수원시 팔달구 행궁로 102",
-      specialty: "말차크림빵, 소보로빵",
-      rating: 4.5,
-      addedDate: new Date("2024-11-28"),
-      notes: "친구랑 같이 가기",
-      visited: false,
-    },
-  ]);
+  const [wishlist, setWishlist] = useState<WishlistItemDisplay[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleRemove = (id: string) => {
-    setWishlist((prev) => prev.filter((item) => item.id !== id));
+  // Load wishlist on mount
+  useEffect(() => {
+    loadWishlist();
+  }, []);
+
+  const loadWishlist = async () => {
+    try {
+      setIsLoading(true);
+      const items = await wishlistAPI.getAll();
+      const displayItems: WishlistItemDisplay[] = items.map((item) => ({
+        id: item.id,
+        bakeryName: item.bakery_name,
+        address: item.bakery_address,
+        specialty: item.bread_types.join(", "),
+        addedDate: new Date(item.created_at),
+        notes: item.note || "",
+        visited: item.visited,
+      }));
+      setWishlist(displayItems);
+    } catch (error) {
+      console.error("Failed to load wishlist:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const toggleVisited = (id: string) => {
-    setWishlist((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, visited: !item.visited } : item
-      )
-    );
+  const handleRemove = async (id: string) => {
+    try {
+      await wishlistAPI.delete(id);
+      setWishlist((prev) => prev.filter((item) => item.id !== id));
+    } catch (error) {
+      console.error("Failed to delete wishlist item:", error);
+      alert("위시리스트 삭제에 실패했습니다.");
+    }
+  };
+
+  const toggleVisited = async (id: string) => {
+    const item = wishlist.find((i) => i.id === id);
+    if (!item) return;
+
+    try {
+      await wishlistAPI.update(id, { visited: !item.visited });
+      setWishlist((prev) =>
+        prev.map((item) =>
+          item.id === id ? { ...item, visited: !item.visited } : item
+        )
+      );
+    } catch (error) {
+      console.error("Failed to update wishlist item:", error);
+      alert("방문 상태 업데이트에 실패했습니다.");
+    }
   };
 
   const startEditing = (id: string, currentNote: string) => {
@@ -88,14 +99,20 @@ export default function WishlistPage() {
     setEditedNote("");
   };
 
-  const saveNote = (id: string) => {
-    setWishlist((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, notes: editedNote } : item
-      )
-    );
-    setEditingId(null);
-    setEditedNote("");
+  const saveNote = async (id: string) => {
+    try {
+      await wishlistAPI.update(id, { note: editedNote });
+      setWishlist((prev) =>
+        prev.map((item) =>
+          item.id === id ? { ...item, notes: editedNote } : item
+        )
+      );
+      setEditingId(null);
+      setEditedNote("");
+    } catch (error) {
+      console.error("Failed to update note:", error);
+      alert("메모 저장에 실패했습니다.");
+    }
   };
 
   const filteredWishlist = wishlist.filter((item) => {
@@ -103,6 +120,14 @@ export default function WishlistPage() {
     if (filter === "unvisited") return !item.visited;
     return true;
   });
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-slate-600 dark:text-slate-400">로딩 중...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col">

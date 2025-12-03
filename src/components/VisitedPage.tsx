@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Calendar, Star, Image as ImageIcon, Plus, Pencil, Trash2 } from "lucide-react";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
@@ -8,9 +8,11 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { useAuth } from "./AuthContext";
 import LoginPrompt from "./LoginPrompt";
+import { visitRecordsAPI, VisitRecord as APIVisitRecord } from "../utils/api-service";
 
-interface VisitRecord {
+interface VisitRecordDisplay {
   id: string;
+  bakeryId: string;
   bakeryName: string;
   visitDate: Date;
   rating: number;
@@ -25,31 +27,41 @@ export default function VisitedPage() {
   if (!isLoggedIn) {
     return <LoginPrompt />;
   }
-  const [records, setRecords] = useState<VisitRecord[]>([
-    {
-      id: "1",
-      bakeryName: "빵굽는날",
-      visitDate: new Date("2024-11-25"),
-      rating: 5,
-      review: "단팥빵이 정말 맛있었어요! 팥이 달지 않고 고소해서 두 개나 먹었습니다. 오후 3시쯤 갔더니 갓 구운 빵을 먹을 수 있었어요. 다음에는 크림빵도 꼭 먹어보고 싶어요.",
-      photos: [],
-      items: ["단팥빵", "크림빵"],
-    },
-    {
-      id: "2",
-      bakeryName: "르뱅드마리",
-      visitDate: new Date("2024-11-20"),
-      rating: 4,
-      review: "크루아상 맛집이라는 소문대로 정말 바삭하고 버터 향이 좋았습니다. 주말이라 사람이 많았지만 기다릴 만한 가치가 있었어요.",
-      photos: [],
-      items: ["크루아상", "바게트"],
-    },
-  ]);
+  const [records, setRecords] = useState<VisitRecordDisplay[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load visit records on mount
+  useEffect(() => {
+    loadVisitRecords();
+  }, []);
+
+  const loadVisitRecords = async () => {
+    try {
+      setIsLoading(true);
+      const apiRecords = await visitRecordsAPI.getAll();
+      const displayRecords: VisitRecordDisplay[] = apiRecords.map((record) => ({
+        id: record.id,
+        bakeryId: record.bakery_id,
+        bakeryName: record.bakery_name,
+        visitDate: new Date(record.visit_date),
+        rating: record.rating,
+        review: record.review || "",
+        photos: [],
+        items: record.bread_purchased ? record.bread_purchased.split(",").map(s => s.trim()) : [],
+      }));
+      setRecords(displayRecords);
+    } catch (error) {
+      console.error("Failed to load visit records:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newRecord, setNewRecord] = useState({
+    bakeryId: "",
     bakeryName: "",
     visitDate: new Date().toISOString().split("T")[0],
     rating: 5,
@@ -57,42 +69,60 @@ export default function VisitedPage() {
     items: "",
   });
   const [editRecord, setEditRecord] = useState({
-    bakeryName: "",
     visitDate: "",
     rating: 5,
     review: "",
     items: "",
   });
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSubmit = () => {
-    const record: VisitRecord = {
-      id: Date.now().toString(),
-      bakeryName: newRecord.bakeryName,
-      visitDate: new Date(newRecord.visitDate),
-      rating: newRecord.rating,
-      review: newRecord.review,
-      photos: [],
-      items: newRecord.items.split(",").map((item) => item.trim()),
-    };
-    setRecords((prev) => [record, ...prev]);
-    setIsDialogOpen(false);
-    setNewRecord({
-      bakeryName: "",
-      visitDate: new Date().toISOString().split("T")[0],
-      rating: 5,
-      review: "",
-      items: "",
-    });
+  const handleSubmit = async () => {
+    if (!newRecord.bakeryId || !newRecord.review) {
+      alert("빵집과 후기를 모두 입력해주세요.");
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      await visitRecordsAPI.create({
+        bakery_id: newRecord.bakeryId,
+        visit_date: newRecord.visitDate,
+        rating: newRecord.rating,
+        bread_purchased: newRecord.items,
+        review: newRecord.review,
+      });
+
+      await loadVisitRecords();
+      setIsDialogOpen(false);
+      setNewRecord({
+        bakeryId: "",
+        bakeryName: "",
+        visitDate: new Date().toISOString().split("T")[0],
+        rating: 5,
+        review: "",
+        items: "",
+      });
+    } catch (error) {
+      console.error("Failed to create visit record:", error);
+      alert("방문 기록 추가에 실패했습니다.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleDelete = (id: string) => {
-    setRecords((prev) => prev.filter((record) => record.id !== id));
+  const handleDelete = async (id: string) => {
+    try {
+      await visitRecordsAPI.delete(id);
+      setRecords((prev) => prev.filter((record) => record.id !== id));
+    } catch (error) {
+      console.error("Failed to delete visit record:", error);
+      alert("방문 기록 삭제에 실패했습니다.");
+    }
   };
 
-  const startEditing = (record: VisitRecord) => {
+  const startEditing = (record: VisitRecordDisplay) => {
     setEditingId(record.id);
     setEditRecord({
-      bakeryName: record.bakeryName,
       visitDate: record.visitDate.toISOString().split("T")[0],
       rating: record.rating,
       review: record.review,
@@ -101,33 +131,42 @@ export default function VisitedPage() {
     setIsEditDialogOpen(true);
   };
 
-  const handleEditSubmit = () => {
+  const handleEditSubmit = async () => {
     if (!editingId) return;
-    
-    setRecords((prev) =>
-      prev.map((record) =>
-        record.id === editingId
-          ? {
-              ...record,
-              bakeryName: editRecord.bakeryName,
-              visitDate: new Date(editRecord.visitDate),
-              rating: editRecord.rating,
-              review: editRecord.review,
-              items: editRecord.items.split(",").map((item) => item.trim()),
-            }
-          : record
-      )
-    );
-    setIsEditDialogOpen(false);
-    setEditingId(null);
-    setEditRecord({
-      bakeryName: "",
-      visitDate: "",
-      rating: 5,
-      review: "",
-      items: "",
-    });
+
+    try {
+      setIsSaving(true);
+      await visitRecordsAPI.update(editingId, {
+        visit_date: editRecord.visitDate,
+        rating: editRecord.rating,
+        bread_purchased: editRecord.items,
+        review: editRecord.review,
+      });
+
+      await loadVisitRecords();
+      setIsEditDialogOpen(false);
+      setEditingId(null);
+      setEditRecord({
+        visitDate: "",
+        rating: 5,
+        review: "",
+        items: "",
+      });
+    } catch (error) {
+      console.error("Failed to update visit record:", error);
+      alert("방문 기록 수정에 실패했습니다.");
+    } finally {
+      setIsSaving(false);
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-slate-600 dark:text-slate-400">로딩 중...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -227,9 +266,9 @@ export default function VisitedPage() {
                 <Button
                   onClick={handleSubmit}
                   className="bg-amber-500 hover:bg-amber-600"
-                  disabled={!newRecord.bakeryName || !newRecord.review}
+                  disabled={isSaving || !newRecord.bakeryId || !newRecord.review}
                 >
-                  저장
+                  {isSaving ? "저장 중..." : "저장"}
                 </Button>
               </div>
             </div>
@@ -242,18 +281,6 @@ export default function VisitedPage() {
               <DialogTitle className="dark:text-slate-100">방문 기록 수정</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <div>
-                <Label htmlFor="editBakeryName" className="dark:text-slate-200">빵집 이름</Label>
-                <Input
-                  id="editBakeryName"
-                  value={editRecord.bakeryName}
-                  onChange={(e) =>
-                    setEditRecord({ ...editRecord, bakeryName: e.target.value })
-                  }
-                  placeholder="빵집 이름을 입력하세요"
-                  className="dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
-                />
-              </div>
               <div>
                 <Label htmlFor="editVisitDate" className="dark:text-slate-200">방문 날짜</Label>
                 <Input
@@ -319,9 +346,9 @@ export default function VisitedPage() {
                 <Button
                   onClick={handleEditSubmit}
                   className="bg-amber-500 hover:bg-amber-600"
-                  disabled={!editRecord.bakeryName || !editRecord.review}
+                  disabled={isSaving || !editRecord.review}
                 >
-                  저장
+                  {isSaving ? "저장 중..." : "저장"}
                 </Button>
               </div>
             </div>

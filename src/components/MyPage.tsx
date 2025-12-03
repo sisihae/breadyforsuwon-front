@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, Mail, MapPin, Calendar, Settings, LogOut } from "lucide-react";
+import { Calendar, Settings, LogOut } from "lucide-react";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -10,21 +10,19 @@ import { useAuth } from "./AuthContext";
 import LoginPrompt from "./LoginPrompt";
 
 export default function MyPage() {
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, user, logout } = useAuth();
 
   if (!isLoggedIn) {
     return <LoginPrompt />;
   }
-  const [profile, setProfile] = useState({
-    name: "김수원",
-    email: "suwon.bread@example.com",
-    location: "경기도 수원시 팔달구",
-    joinDate: "2024년 10월",
-    visitedCount: 12,
-    wishlistCount: 5,
-  });
 
   const [isEditing, setIsEditing] = useState(false);
+  const [editedName, setEditedName] = useState(user?.name || "");
+
+  const formatJoinDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return `${date.getFullYear()}년 ${date.getMonth() + 1}월`;
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -39,25 +37,21 @@ export default function MyPage() {
           <div className="p-6">
             <div className="mb-6 text-center">
               <Avatar className="mx-auto h-24 w-24">
-                <AvatarImage src="" alt={profile.name} />
+                <AvatarImage src="" alt={user?.name || "User"} />
                 <AvatarFallback className="bg-amber-500 text-white text-2xl">
-                  {profile.name.charAt(0)}
+                  {user?.name?.charAt(0) || "U"}
                 </AvatarFallback>
               </Avatar>
-              <h3 className="mt-4 text-slate-900 dark:text-slate-100">{profile.name}</h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400">{profile.email}</p>
+              <h3 className="mt-4 text-slate-900 dark:text-slate-100">{user?.name || "사용자"}</h3>
+              <p className="text-sm text-slate-600 dark:text-slate-400">{user?.email || "이메일 없음"}</p>
             </div>
 
             <Separator className="my-4 dark:bg-slate-700" />
 
             <div className="space-y-3 text-sm">
               <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400">
-                <MapPin className="h-4 w-4" />
-                <span>{profile.location}</span>
-              </div>
-              <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400">
                 <Calendar className="h-4 w-4" />
-                <span>{profile.joinDate} 가입</span>
+                <span>{user?.created_at ? formatJoinDate(user.created_at) : "정보 없음"} 가입</span>
               </div>
             </div>
 
@@ -65,11 +59,11 @@ export default function MyPage() {
 
             <div className="grid grid-cols-2 gap-3 text-center">
               <div className="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
-                <p className="text-2xl text-amber-600 dark:text-amber-500">{profile.visitedCount}</p>
+                <p className="text-2xl text-amber-600 dark:text-amber-500">{user?.visit_records_count || 0}</p>
                 <p className="text-xs text-slate-600 dark:text-slate-400">방문한 빵집</p>
               </div>
               <div className="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
-                <p className="text-2xl text-amber-600 dark:text-amber-500">{profile.wishlistCount}</p>
+                <p className="text-2xl text-amber-600 dark:text-amber-500">{user?.wishlist_count || 0}</p>
                 <p className="text-xs text-slate-600 dark:text-slate-400">위시리스트</p>
               </div>
             </div>
@@ -98,10 +92,8 @@ export default function MyPage() {
                 <Label htmlFor="name" className="dark:text-slate-200">이름</Label>
                 <Input
                   id="name"
-                  value={profile.name}
-                  onChange={(e) =>
-                    setProfile({ ...profile, name: e.target.value })
-                  }
+                  value={editedName}
+                  onChange={(e) => setEditedName(e.target.value)}
                   disabled={!isEditing}
                   className="dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:disabled:bg-slate-800"
                 />
@@ -112,24 +104,8 @@ export default function MyPage() {
                 <Input
                   id="email"
                   type="email"
-                  value={profile.email}
-                  onChange={(e) =>
-                    setProfile({ ...profile, email: e.target.value })
-                  }
-                  disabled={!isEditing}
-                  className="dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:disabled:bg-slate-800"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="location" className="dark:text-slate-200">지역</Label>
-                <Input
-                  id="location"
-                  value={profile.location}
-                  onChange={(e) =>
-                    setProfile({ ...profile, location: e.target.value })
-                  }
-                  disabled={!isEditing}
+                  value={user?.email || ""}
+                  disabled
                   className="dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:disabled:bg-slate-800"
                 />
               </div>
@@ -177,12 +153,9 @@ export default function MyPage() {
             <div className="space-y-3">
               <h4 className="text-slate-900 dark:text-slate-100">계정 관리</h4>
               <div className="space-y-2">
-                <Button variant="outline" className="w-full justify-start gap-2 dark:border-slate-600 dark:hover:bg-slate-700">
-                  <Settings className="h-4 w-4" />
-                  비밀번호 변경
-                </Button>
                 <Button
                   variant="outline"
+                  onClick={logout}
                   className="w-full justify-start gap-2 text-red-600 hover:text-red-700 dark:border-slate-600 dark:text-red-400 dark:hover:bg-slate-700 dark:hover:text-red-300"
                 >
                   <LogOut className="h-4 w-4" />

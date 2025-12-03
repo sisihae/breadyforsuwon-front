@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Send, Bot, User, Plus, Trash2, MessageSquare } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { ScrollArea } from "./ui/scroll-area";
 import { Card } from "./ui/card";
+import { chatAPI, ChatHistoryItem } from "../utils/api-service";
 
 interface Message {
   id: string;
@@ -20,28 +21,9 @@ interface ChatHistory {
 }
 
 export default function ChatbotPage() {
-  const [chatHistories, setChatHistories] = useState<ChatHistory[]>([
-    {
-      id: "1",
-      title: "크루아상 맛집 추천",
-      lastMessage: "수원에는 정말 좋은 빵집들이 많아요!",
-      timestamp: new Date("2024-11-28"),
-    },
-    {
-      id: "2",
-      title: "행궁동 베이커리",
-      lastMessage: "화성행궁 근처 '수제빵공방 온'은...",
-      timestamp: new Date("2024-11-25"),
-    },
-    {
-      id: "3",
-      title: "소금빵 맛집",
-      lastMessage: "영통구에 있는 '베이커리카페 밀'을...",
-      timestamp: new Date("2024-11-20"),
-    },
-  ]);
-
-  const [selectedChatId, setSelectedChatId] = useState<string>("1");
+  const [chatHistories, setChatHistories] = useState<ChatHistory[]>([]);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -53,17 +35,33 @@ export default function ChatbotPage() {
     },
   ]);
   const [input, setInput] = useState("");
+  const [isSending, setIsSending] = useState(false);
 
-  // Mock chatbot responses
-  const mockResponses = [
-    "수원에는 정말 좋은 빵집들이 많아요! 행궁동의 '르뱅드마리'는 천연발효빵으로 유명하고, 크루아상이 특히 맛있습니다.",
-    "영통구에 있는 '베이커리카페 밀'을 추천드려요. 소금빵과 카눌레가 시그니처 메뉴이고, 아침 일찍 가시는 걸 추천합니다!",
-    "팔달구 '빵굽는날'은 단팥빵과 크림빵이 맛있기로 유명해요. 오후 3시쯤 가면 갓 구운 빵을 만나실 수 있어요.",
-    "화성행궁 근처 '수제빵공방 온'은 분위기 좋은 카페형 베이커리입니다. 말차크림빵과 소보로빵을 꼭 드셔보세요!",
-  ];
+  // Load chat history on mount
+  useEffect(() => {
+    loadChatHistory();
+  }, []);
 
-  const handleSend = () => {
-    if (!input.trim()) return;
+  const loadChatHistory = async () => {
+    try {
+      setIsLoadingHistory(true);
+      const history = await chatAPI.getHistory(100);
+      const formattedHistory: ChatHistory[] = history.map((item) => ({
+        id: item.id,
+        title: item.user_message.substring(0, 20) + (item.user_message.length > 20 ? "..." : ""),
+        lastMessage: item.bot_response.substring(0, 50) + (item.bot_response.length > 50 ? "..." : ""),
+        timestamp: new Date(item.created_at),
+      }));
+      setChatHistories(formattedHistory);
+    } catch (error) {
+      console.error("Failed to load chat history:", error);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const handleSend = async () => {
+    if (!input.trim() || isSending) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -73,32 +71,42 @@ export default function ChatbotPage() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const messageText = input;
     setInput("");
+    setIsSending(true);
 
-    // Simulate AI response
-    setTimeout(() => {
-      const randomResponse =
-        mockResponses[Math.floor(Math.random() * mockResponses.length)];
+    try {
+      const data = await chatAPI.sendMessage({
+        message: messageText,
+        context_count: 5,
+      });
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: randomResponse,
+        content: data?.response || "죄송합니다. 답변을 생성할 수 없습니다.",
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, assistantMessage]);
-    }, 1000);
+
+      // Reload chat history to include the new chat
+      await loadChatHistory();
+    } catch (err: any) {
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: err?.body?.detail || "서버와 통신 중 오류가 발생했습니다.",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+      console.error(err);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleNewChat = () => {
-    const newChatId = Date.now().toString();
-    const newChat: ChatHistory = {
-      id: newChatId,
-      title: "새 대화",
-      lastMessage: "안녕하세요! 수원 빵집 추천 챗봇입니다.",
-      timestamp: new Date(),
-    };
-    setChatHistories((prev) => [newChat, ...prev]);
-    setSelectedChatId(newChatId);
+    setSelectedChatId(null);
     setMessages([
       {
         id: "1",
@@ -110,12 +118,17 @@ export default function ChatbotPage() {
     ]);
   };
 
-  const handleDeleteChat = (id: string, e: React.MouseEvent) => {
+  const handleDeleteChat = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setChatHistories((prev) => prev.filter((chat) => chat.id !== id));
-    if (selectedChatId === id && chatHistories.length > 1) {
-      const remainingChats = chatHistories.filter((chat) => chat.id !== id);
-      setSelectedChatId(remainingChats[0].id);
+    try {
+      await chatAPI.deleteHistory(id);
+      setChatHistories((prev) => prev.filter((chat) => chat.id !== id));
+      if (selectedChatId === id && chatHistories.length > 1) {
+        const remainingChats = chatHistories.filter((chat) => chat.id !== id);
+        setSelectedChatId(remainingChats[0]?.id || null);
+      }
+    } catch (error) {
+      console.error("Failed to delete chat history:", error);
     }
   };
 
@@ -169,7 +182,9 @@ export default function ChatbotPage() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={(e) => handleDeleteChat(chat.id, e)}
+                    onClick={(e: React.MouseEvent) =>
+                      handleDeleteChat(chat.id, e)
+                    }
                     className="invisible h-6 w-6 p-0 text-slate-400 hover:text-red-500 group-hover:visible dark:text-slate-500 dark:hover:text-red-400"
                   >
                     <Trash2 className="h-3 w-3" />
@@ -250,13 +265,14 @@ export default function ChatbotPage() {
               />
               <Button
                 onClick={handleSend}
+                disabled={isSending || !input.trim()}
                 className="bg-amber-500 hover:bg-amber-600"
               >
                 <Send className="h-4 w-4" />
               </Button>
             </div>
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              * 실제 서비스에서는 Vector DB를 활용한 AI 추천이 제공됩니다
+              * Bready can make mistakes. Please verify the information.
             </p>
           </div>
         </Card>

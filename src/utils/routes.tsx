@@ -5,8 +5,13 @@ import MapPage from "../components/MapPage";
 import WishlistPage from "../components/WishlistPage";
 import VisitedPage from "../components/VisitedPage";
 import MyPage from "../components/MyPage";
+import KakaoCallback from "../components/KakaoCallback";
 
 export const router = createBrowserRouter([
+  {
+    path: "/auth/kakao/callback",
+    element: <KakaoCallback />,
+  },
   {
     path: "/",
     Component: Layout,

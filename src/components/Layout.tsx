@@ -17,7 +17,7 @@ import { Button } from "./ui/button";
 
 export default function Layout() {
   const { theme, toggleTheme } = useTheme();
-  const { isLoggedIn, user, logout } = useAuth();
+  const { isLoggedIn, user, logout, loading } = useAuth();
 
   const navItems = [
     { path: "/chatbot", icon: MessageCircle, label: "AI Chat" },
@@ -26,6 +26,17 @@ export default function Layout() {
     { path: "/visited", icon: BookOpen, label: "Visited" },
     { path: "/mypage", icon: User, label: "My Page" },
   ];
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-900">
+        <div className="text-center">
+          <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-amber-500 border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
+          <p className="text-slate-600 dark:text-slate-400">로딩 중...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen flex-col bg-slate-50 dark:bg-slate-900">
@@ -56,7 +67,7 @@ export default function Layout() {
                   className="gap-1 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
                 >
                   <LogOut className="h-4 w-4" />
-                  <span className="hidden sm:inline">로그아웃</span>
+                  <span className="hidden sm:inline">Log out</span>
                 </Button>
               </div>
             )}

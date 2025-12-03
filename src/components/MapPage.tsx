@@ -4,6 +4,8 @@ import { Card } from "./ui/card";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
+import { bakeryAPI, tagsAPI, wishlistAPI } from "../utils/api-service";
+import { useAuth } from "./AuthContext";
 
 declare global {
   interface Window {
@@ -11,7 +13,7 @@ declare global {
   }
 }
 
-interface Bakery {
+interface BakeryDisplay {
   id: string;
   name: string;
   address: string;
@@ -24,93 +26,127 @@ interface Bakery {
   breadTags: string[];
 }
 
-// Bread tag 목록
-const BREAD_TAGS = [
-  "크루아상",
-  "식빵",
-  "타르트",
-  "카눌레",
-  "소금빵",
-  "단팥빵",
-  "크림빵",
-  "소보로빵",
-  "바게트",
-  "데니쉬",
-];
-
 export default function MapPage() {
+  const { isLoggedIn } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
-  const [selectedBakery, setSelectedBakery] = useState<Bakery | null>(null);
+  const [selectedBakery, setSelectedBakery] = useState<BakeryDisplay | null>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const kakaoMapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
 
-  // Mock bakery data - 수원 실제 좌표 근처
-  const bakeries: Bakery[] = [
-    {
-      id: "1",
-      name: "르뱅드마리",
-      address: "경기 수원시 팔달구 행궁로 30",
-      rating: 4.8,
-      specialty: "천연발효빵, 크루아상",
-      distance: "0.5km",
-      lat: 37.2858,
-      lng: 127.0168,
-      isWishlisted: false,
-      breadTags: ["크루아상", "바게트", "데니쉬"],
-    },
-    {
-      id: "2",
-      name: "베이커리카페 밀",
-      address: "경기 수원시 영통구 광교중앙로 248",
-      rating: 4.6,
-      specialty: "소금빵, 카눌레",
-      distance: "1.2km",
-      lat: 37.2975,
-      lng: 127.0456,
-      isWishlisted: true,
-      breadTags: ["소금빵", "카눌레", "크루아상"],
-    },
-    {
-      id: "3",
-      name: "빵굽는날",
-      address: "경기 수원시 팔달구 정조로 906",
-      rating: 4.7,
-      specialty: "단팥빵, 크림빵",
-      distance: "0.8km",
-      lat: 37.2702,
-      lng: 127.0012,
-      isWishlisted: false,
-      breadTags: ["단팥빵", "크림빵", "식빵"],
-    },
-    {
-      id: "4",
-      name: "수제빵공방 온",
-      address: "경기 수원시 팔달구 행궁로 102",
-      rating: 4.5,
-      specialty: "말차크림빵, 소보로빵",
-      distance: "0.6km",
-      lat: 37.2834,
-      lng: 127.0145,
-      isWishlisted: false,
-      breadTags: ["소보로빵", "크림빵", "타르트"],
-    },
-  ];
+  const [bakeries, setBakeries] = useState<BakeryDisplay[]>([]);
+  const [breadTags, setBreadTags] = useState<string[]>([]);
+  const [wishlistIds, setWishlistIds] = useState<Set<string>>(new Set());
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load bakeries, tags, and wishlist on mount
+  useEffect(() => {
+    loadInitialData();
+  }, []);
+
+  const loadInitialData = async () => {
+    try {
+      setIsLoading(true);
+      const [bakeriesData, tagsData, wishlistData] = await Promise.all([
+        bakeryAPI.getAll({ limit: 100 }),
+        tagsAPI.getAll().catch(() => []),
+        isLoggedIn ? wishlistAPI.getAll().catch(() => []) : Promise.resolve([]),
+      ]);
+
+      // Convert API bakeries to display format
+      const displayBakeries: BakeryDisplay[] = bakeriesData.map((bakery) => ({
+        id: bakery.id,
+        name: bakery.name,
+        address: bakery.address,
+        rating: bakery.rating,
+        specialty: bakery.bread_tags?.join(", ") || "",
+        distance: "계산 중",
+        lat: bakery.latitude || 37.2858,
+        lng: bakery.longitude || 127.0168,
+        isWishlisted: false,
+        breadTags: bakery.bread_tags || [],
+      }));
+
+      setBakeries(displayBakeries);
+      setBreadTags(tagsData.map((tag) => tag.name));
+
+      const wishlistSet = new Set(wishlistData.map((item) => item.bakery_id));
+      setWishlistIds(wishlistSet);
+
+      // Update isWishlisted status
+      setBakeries((prev) =>
+        prev.map((b) => ({ ...b, isWishlisted: wishlistSet.has(b.id) }))
+      );
+    } catch (error) {
+      console.error("Failed to load data:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const filteredBakeries = bakeries.filter((bakery) => {
-    // 텍스트 검색 필터
+    // Text search filter
     const matchesSearch =
+      searchQuery === "" ||
       bakery.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       bakery.specialty.toLowerCase().includes(searchQuery.toLowerCase());
 
-    // Bread tag 필터
+    // Bread tag filter
     const matchesTag = selectedTag
-      ? bakery.breadTags.includes(selectedTag)
+      ? bakery.breadTags.some((tag) =>
+          tag.toLowerCase().includes(selectedTag.toLowerCase())
+        )
       : true;
 
     return matchesSearch && matchesTag;
   });
+
+  const handleToggleWishlist = async (bakeryId: string) => {
+    if (!isLoggedIn) {
+      alert("위시리스트에 추가하려면 로그인이 필요합니다.");
+      return;
+    }
+
+    const isCurrentlyWishlisted = wishlistIds.has(bakeryId);
+
+    try {
+      if (isCurrentlyWishlisted) {
+        // Find wishlist item to delete
+        const wishlistData = await wishlistAPI.getAll();
+        const item = wishlistData.find((w) => w.bakery_id === bakeryId);
+        if (item) {
+          await wishlistAPI.delete(item.id);
+          setWishlistIds((prev) => {
+            const next = new Set(prev);
+            next.delete(bakeryId);
+            return next;
+          });
+        }
+      } else {
+        await wishlistAPI.add(bakeryId);
+        setWishlistIds((prev) => new Set(prev).add(bakeryId));
+      }
+
+      // Update bakery wishlist status
+      setBakeries((prev) =>
+        prev.map((b) =>
+          b.id === bakeryId
+            ? { ...b, isWishlisted: !isCurrentlyWishlisted }
+            : b
+        )
+      );
+
+      if (selectedBakery?.id === bakeryId) {
+        setSelectedBakery((prev) =>
+          prev ? { ...prev, isWishlisted: !isCurrentlyWishlisted } : null
+        );
+      }
+    } catch (error) {
+      console.error("Failed to toggle wishlist:", error);
+      alert("위시리스트 업데이트에 실패했습니다.");
+    }
+  };
 
   // 카카오맵 초기화
   useEffect(() => {
@@ -151,8 +187,8 @@ export default function MapPage() {
     }
   }, []);
 
-  // 마커 생성 함수
-  const createMarkers = (map: any, bakeries: Bakery[]) => {
+  // Create markers function
+  const createMarkers = (map: any, bakeries: BakeryDisplay[]) => {
     // 기존 마커 제거
     markersRef.current.forEach((marker) => marker.setMap(null));
     markersRef.current = [];
@@ -245,6 +281,14 @@ export default function MapPage() {
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-slate-600 dark:text-slate-400">로딩 중...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full flex-col gap-4">
       <div>
@@ -277,7 +321,7 @@ export default function MapPage() {
       {/* Bread Tags Filter */}
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap gap-2">
-          {BREAD_TAGS.map((tag) => {
+          {breadTags.map((tag) => {
             const isSelected = selectedTag === tag;
             // 현재 tag를 가진 빵집 개수 계산
             const count = bakeries.filter((b) =>
@@ -377,6 +421,7 @@ export default function MapPage() {
                     variant={
                       selectedBakery.isWishlisted ? "default" : "outline"
                     }
+                    onClick={() => handleToggleWishlist(selectedBakery.id)}
                     className={
                       selectedBakery.isWishlisted
                         ? "bg-amber-500 hover:bg-amber-600"
