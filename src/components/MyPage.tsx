@@ -28,7 +28,9 @@ export default function MyPage() {
     <div className="flex h-full flex-col">
       <div className="mb-6">
         <h2 className="text-slate-900 dark:text-slate-100">마이페이지</h2>
-        <p className="text-slate-600 dark:text-slate-400">내 프로필 및 활동 정보</p>
+        <p className="text-slate-600 dark:text-slate-400">
+          내 프로필 및 활동 정보
+        </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -37,13 +39,20 @@ export default function MyPage() {
           <div className="p-6">
             <div className="mb-6 text-center">
               <Avatar className="mx-auto h-24 w-24">
-                <AvatarImage src="" alt={user?.name || "User"} />
+                <AvatarImage
+                  src={user?.profile_image || ""}
+                  alt={user?.name || "User"}
+                />
                 <AvatarFallback className="bg-amber-500 text-white text-2xl">
                   {user?.name?.charAt(0) || "U"}
                 </AvatarFallback>
               </Avatar>
-              <h3 className="mt-4 text-slate-900 dark:text-slate-100">{user?.name || "사용자"}</h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400">{user?.email || "이메일 없음"}</p>
+              <h3 className="mt-4 text-slate-900 dark:text-slate-100">
+                {user?.name || "사용자"}
+              </h3>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                {user?.email || "이메일 없음"}
+              </p>
             </div>
 
             <Separator className="my-4 dark:bg-slate-700" />
@@ -51,7 +60,12 @@ export default function MyPage() {
             <div className="space-y-3 text-sm">
               <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400">
                 <Calendar className="h-4 w-4" />
-                <span>{user?.created_at ? formatJoinDate(user.created_at) : "정보 없음"} 가입</span>
+                <span>
+                  {user?.created_at
+                    ? formatJoinDate(user.created_at)
+                    : "정보 없음"}{" "}
+                  가입
+                </span>
               </div>
             </div>
 
@@ -59,12 +73,20 @@ export default function MyPage() {
 
             <div className="grid grid-cols-2 gap-3 text-center">
               <div className="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
-                <p className="text-2xl text-amber-600 dark:text-amber-500">{user?.visit_records_count || 0}</p>
-                <p className="text-xs text-slate-600 dark:text-slate-400">방문한 빵집</p>
+                <p className="text-2xl text-amber-600 dark:text-amber-500">
+                  {user?.visit_records_count || 0}
+                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  방문한 빵집
+                </p>
               </div>
               <div className="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
-                <p className="text-2xl text-amber-600 dark:text-amber-500">{user?.wishlist_count || 0}</p>
-                <p className="text-xs text-slate-600 dark:text-slate-400">위시리스트</p>
+                <p className="text-2xl text-amber-600 dark:text-amber-500">
+                  {user?.wishlist_count || 0}
+                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  위시리스트
+                </p>
               </div>
             </div>
           </div>
@@ -81,7 +103,11 @@ export default function MyPage() {
               <Button
                 variant={isEditing ? "default" : "outline"}
                 onClick={() => setIsEditing(!isEditing)}
-                className={isEditing ? "bg-amber-500 hover:bg-amber-600" : "dark:border-slate-600 dark:hover:bg-slate-700"}
+                className={
+                  isEditing
+                    ? "bg-amber-500 hover:bg-amber-600"
+                    : "dark:border-slate-600 dark:hover:bg-slate-700"
+                }
               >
                 {isEditing ? "저장" : "수정"}
               </Button>
@@ -89,10 +115,12 @@ export default function MyPage() {
 
             <div className="space-y-4">
               <div>
-                <Label htmlFor="name" className="dark:text-slate-200">이름</Label>
+                <Label htmlFor="name" className="dark:text-slate-200">
+                  이름
+                </Label>
                 <Input
                   id="name"
-                  value={editedName}
+                  value={user?.name || editedName}
                   onChange={(e) => setEditedName(e.target.value)}
                   disabled={!isEditing}
                   className="dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:disabled:bg-slate-800"
@@ -100,7 +128,9 @@ export default function MyPage() {
               </div>
 
               <div>
-                <Label htmlFor="email" className="dark:text-slate-200">이메일</Label>
+                <Label htmlFor="email" className="dark:text-slate-200">
+                  이메일
+                </Label>
                 <Input
                   id="email"
                   type="email"
@@ -166,8 +196,6 @@ export default function MyPage() {
           </div>
         </Card>
       </div>
-
-
     </div>
   );
 }

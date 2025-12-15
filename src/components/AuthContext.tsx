@@ -11,6 +11,7 @@ interface User {
   id: string;
   email: string | null;
   name: string | null;
+  profile_image: string | null;
   created_at: string;
   visit_records_count: number;
   wishlist_count: number;

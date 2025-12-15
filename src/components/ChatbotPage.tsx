@@ -48,8 +48,12 @@ export default function ChatbotPage() {
       const history = await chatAPI.getHistory(100);
       const formattedHistory: ChatHistory[] = history.map((item) => ({
         id: item.id,
-        title: item.user_message.substring(0, 20) + (item.user_message.length > 20 ? "..." : ""),
-        lastMessage: item.bot_response.substring(0, 50) + (item.bot_response.length > 50 ? "..." : ""),
+        title:
+          item.user_message.substring(0, 20) +
+          (item.user_message.length > 20 ? "..." : ""),
+        lastMessage:
+          item.bot_response.substring(0, 50) +
+          (item.bot_response.length > 50 ? "..." : ""),
         timestamp: new Date(item.created_at),
       }));
       setChatHistories(formattedHistory);
@@ -197,7 +201,7 @@ export default function ChatbotPage() {
       </Card>
 
       {/* Chat Area */}
-      <div className="flex flex-1 flex-col">
+      <div className="flex flex-1 flex-col overflow-auto">
         <div className="mb-4">
           <h2 className="text-slate-900 dark:text-slate-100">AI 챗봇</h2>
           <p className="text-slate-600 dark:text-slate-400">

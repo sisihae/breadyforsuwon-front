@@ -17,7 +17,6 @@ interface BakeryDisplay {
   id: string;
   name: string;
   address: string;
-  rating: number;
   specialty: string;
   distance: string;
   lat: number;
@@ -30,48 +29,51 @@ export default function MapPage() {
   const { isLoggedIn } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
-  const [selectedBakery, setSelectedBakery] = useState<BakeryDisplay | null>(null);
+  const [selectedBakery, setSelectedBakery] = useState<BakeryDisplay | null>(
+    null
+  );
   const mapRef = useRef<HTMLDivElement>(null);
   const kakaoMapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const clustererRef = useRef<any>(null);
+  const selectedMarkerRef = useRef<any | null>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [markersLoading, setMarkersLoading] = useState(false);
+  const initAttemptsRef = useRef(0);
 
   const [bakeries, setBakeries] = useState<BakeryDisplay[]>([]);
   const [breadTags, setBreadTags] = useState<string[]>([]);
   const [wishlistIds, setWishlistIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
-
-  // Load bakeries, tags, and wishlist on mount
-  useEffect(() => {
-    loadInitialData();
-  }, []);
-
   const loadInitialData = async () => {
     try {
       setIsLoading(true);
-      const [bakeriesData, tagsData, wishlistData] = await Promise.all([
-        bakeryAPI.getAll({ limit: 100 }),
-        tagsAPI.getAll().catch(() => []),
-        isLoggedIn ? wishlistAPI.getAll().catch(() => []) : Promise.resolve([]),
+
+      const [bakeryData, tagsData, wishlistData] = await Promise.all([
+        bakeryAPI.getAll(),
+        tagsAPI.getAll(),
+        isLoggedIn ? wishlistAPI.getAll() : Promise.resolve([]),
       ]);
 
-      // Convert API bakeries to display format
-      const displayBakeries: BakeryDisplay[] = bakeriesData.map((bakery) => ({
-        id: bakery.id,
-        name: bakery.name,
-        address: bakery.address,
-        rating: bakery.rating,
-        specialty: bakery.bread_tags?.join(", ") || "",
-        distance: "계산 중",
-        lat: bakery.latitude || 37.2858,
-        lng: bakery.longitude || 127.0168,
+      const displayBakeries: BakeryDisplay[] = bakeryData.map((b) => ({
+        id: b.id,
+        name: b.name,
+        address: b.address,
+        specialty:
+          (b.bread_tags && b.bread_tags.join(", ")) || b.ai_summary || "",
+        distance: "",
+        lat: b.latitude ?? 0,
+        lng: b.longitude ?? 0,
         isWishlisted: false,
-        breadTags: bakery.bread_tags || [],
+        breadTags: b.bread_tags || [],
       }));
 
       setBakeries(displayBakeries);
       setBreadTags(tagsData.map((tag) => tag.name));
 
-      const wishlistSet = new Set(wishlistData.map((item) => item.bakery_id));
+      const wishlistSet = new Set(
+        (wishlistData || []).map((item: any) => item.bakery_id)
+      );
       setWishlistIds(wishlistSet);
 
       // Update isWishlisted status
@@ -84,6 +86,11 @@ export default function MapPage() {
       setIsLoading(false);
     }
   };
+
+  // Load bakeries, tags, and wishlist on mount
+  useEffect(() => {
+    loadInitialData();
+  }, [isLoggedIn]);
 
   const filteredBakeries = bakeries.filter((bakery) => {
     // Text search filter
@@ -131,9 +138,7 @@ export default function MapPage() {
       // Update bakery wishlist status
       setBakeries((prev) =>
         prev.map((b) =>
-          b.id === bakeryId
-            ? { ...b, isWishlisted: !isCurrentlyWishlisted }
-            : b
+          b.id === bakeryId ? { ...b, isWishlisted: !isCurrentlyWishlisted } : b
         )
       );
 
@@ -151,22 +156,41 @@ export default function MapPage() {
   // 카카오맵 초기화
   useEffect(() => {
     const initMap = () => {
-      if (!mapRef.current || !window.kakao || !window.kakao.maps) {
-        return;
+      try {
+        if (!mapRef.current || !window.kakao || !window.kakao.maps) {
+          initAttemptsRef.current = (initAttemptsRef.current || 0) + 1;
+          if (initAttemptsRef.current <= 10) {
+            setTimeout(initMap, 200);
+            return;
+          }
+          const missing = [] as string[];
+          if (!mapRef.current) missing.push("mapRef");
+          if (!window.kakao) missing.push("window.kakao");
+          else if (!window.kakao.maps) missing.push("window.kakao.maps");
+          const msg = `initMap failed after retries; missing: ${missing.join(
+            ", "
+          )}`;
+          console.error(msg);
+          setMapError(msg);
+          return;
+        }
+
+        // 지도 생성
+        const container = mapRef.current;
+        const options = {
+          center: new window.kakao.maps.LatLng(37.2858, 127.0168), // 수원 화성행궁 근처
+          level: 5,
+        };
+
+        const map = new window.kakao.maps.Map(container, options);
+        kakaoMapRef.current = map;
+
+        // 마커 생성
+        createMarkers(map, filteredBakeries);
+      } catch (err) {
+        console.error("initMap error", err);
+        setMapError(String(err));
       }
-
-      // 지도 생성
-      const container = mapRef.current;
-      const options = {
-        center: new window.kakao.maps.LatLng(37.2858, 127.0168), // 수원 화성행궁 근처
-        level: 5,
-      };
-
-      const map = new window.kakao.maps.Map(container, options);
-      kakaoMapRef.current = map;
-
-      // 마커 생성
-      createMarkers(map, filteredBakeries);
     };
 
     // 카카오맵 스크립트 로드 확인
@@ -174,14 +198,22 @@ export default function MapPage() {
       window.kakao.maps.load(initMap);
     } else {
       const script = document.createElement("script");
-      script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${
-        import.meta.env.VITE_KAKAOMAP_API_KEY
-      }&autoload=false`;
+      // include clusterer library for better performance with many markers
+      script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${
+        import.meta.env.VITE_KAKAO_JAVASCRIPT_KEY
+      }&libraries=clusterer&autoload=false`;
       script.async = true;
       script.onload = () => {
+        setMapError(null);
         if (window.kakao && window.kakao.maps) {
           window.kakao.maps.load(initMap);
         }
+      };
+      script.onerror = () => {
+        console.error("Failed to load Kakao Maps script");
+        setMapError(
+          "Failed to load Kakao Maps script — check network or API key"
+        );
       };
       document.head.appendChild(script);
     }
@@ -189,65 +221,154 @@ export default function MapPage() {
 
   // Create markers function
   const createMarkers = (map: any, bakeries: BakeryDisplay[]) => {
+    // marker timing removed in production
+    // Remove existing clusterer if any
+    if (clustererRef.current) {
+      try {
+        if (clustererRef.current.clear) clustererRef.current.clear();
+        if (clustererRef.current.removeMarkers)
+          clustererRef.current.removeMarkers(
+            markersRef.current.map((m: any) => m.marker)
+          );
+      } catch (e) {
+        // ignore
+      }
+      clustererRef.current = null;
+    }
+
     // 기존 마커 제거
-    markersRef.current.forEach((marker) => marker.setMap(null));
+    markersRef.current.forEach((m) => m.marker.setMap(null));
     markersRef.current = [];
 
-    bakeries.forEach((bakery, index) => {
-      const markerPosition = new window.kakao.maps.LatLng(
-        bakery.lat,
-        bakery.lng
-      );
+    // Filter bakeries with valid coordinates
+    const bakeriesWithCoords = bakeries.filter(
+      (bakery) => bakery.lat !== 0 && bakery.lng !== 0
+    );
 
-      // 커스텀 마커 이미지 생성
-      const markerContent = `
-        <div style="position: relative; cursor: pointer;">
-          <div style="
-            background-color: ${
-              selectedBakery?.id === bakery.id ? "#f59e0b" : "#ef4444"
-            };
-            color: white;
-            padding: 8px 12px;
-            border-radius: 20px;
-            font-weight: bold;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            font-size: 14px;
-            white-space: nowrap;
-          ">
-            ${index + 1}. ${bakery.name}
-          </div>
-          <div style="
-            position: absolute;
-            bottom: -6px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 0;
-            height: 0;
-            border-left: 6px solid transparent;
-            border-right: 6px solid transparent;
-            border-top: 6px solid ${
-              selectedBakery?.id === bakery.id ? "#f59e0b" : "#ef4444"
-            };
-          "></div>
-        </div>
-      `;
+    // Create markers in batches to avoid blocking UI when there are many (e.g., 450+)
+    const batchSize = 100;
+    let idx = 0;
+    setMarkersLoading(true);
 
-      const customOverlay = new window.kakao.maps.CustomOverlay({
-        position: markerPosition,
-        content: markerContent,
-        yAnchor: 1.3,
-      });
+    const createBatch = () => {
+      const end = Math.min(idx + batchSize, bakeriesWithCoords.length);
+      for (; idx < end; idx++) {
+        const bakery = bakeriesWithCoords[idx];
+        const markerPosition = new window.kakao.maps.LatLng(
+          bakery.lat,
+          bakery.lng
+        );
 
-      customOverlay.setMap(map);
-      markersRef.current.push(customOverlay);
+        // Create small SVG marker images for default and selected states
+        const makeMarkerImage = (color: string, size = 26) => {
+          const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}' viewBox='0 0 ${size} ${size}'><circle cx='${
+            size / 2
+          }' cy='${size / 2}' r='${
+            size / 2 - 1
+          }' fill='${color}' stroke='white' stroke-width='2'/></svg>`;
+          const url =
+            "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg);
+          return new window.kakao.maps.MarkerImage(
+            url,
+            new window.kakao.maps.Size(size, size),
+            { offset: new window.kakao.maps.Point(size / 2, size / 2) }
+          );
+        };
 
-      // 마커 클릭 이벤트
-      const markerElement = customOverlay.getContent();
-      markerElement.addEventListener("click", () => {
-        setSelectedBakery(bakery);
-        map.panTo(markerPosition);
-      });
-    });
+        const defaultImage = makeMarkerImage("#94a3b8", 22);
+        const selectedImage = makeMarkerImage("#f59e0b", 30);
+
+        const marker = new window.kakao.maps.Marker({
+          position: markerPosition,
+          title: `${idx + 1}. ${bakery.name}`,
+          image: defaultImage,
+        });
+        // attach meta for later
+        (marker as any).__bakeryId = bakery.id;
+        (marker as any).__defaultImage = defaultImage;
+        (marker as any).__selectedImage = selectedImage;
+
+        window.kakao.maps.event.addListener(marker, "click", () => {
+          setSelectedBakery(bakery);
+          // visually highlight marker immediately
+          setSelectedMarkerById(bakery.id);
+          map.panTo(markerPosition);
+        });
+
+        markersRef.current.push({ marker, bakeryId: bakery.id });
+      }
+
+      // batch progress (silenced in production)
+      if (idx < bakeriesWithCoords.length) {
+        // schedule next batch
+        setTimeout(createBatch, 20);
+      } else {
+        // all markers created, attach to map or clusterer
+        finalizeMarkers();
+      }
+    };
+
+    // (selection helpers moved to component scope)
+
+    const finalizeMarkers = () => {
+      setMarkersLoading(false);
+      if (window.kakao.maps.MarkerClusterer) {
+        try {
+          clustererRef.current = new window.kakao.maps.MarkerClusterer({
+            map: map,
+            averageCenter: true,
+            minLevel: 7,
+          });
+          clustererRef.current.addMarkers(
+            markersRef.current.map((m: any) => m.marker)
+          );
+        } catch (e) {
+          markersRef.current.forEach((m) => m.marker.setMap(map));
+        }
+      } else {
+        markersRef.current.forEach((m) => m.marker.setMap(map));
+      }
+
+      // restore selected marker if any
+      setSelectedMarkerById(selectedBakery?.id);
+    };
+
+    // kick off first batch
+    createBatch();
+
+    // marker creation happens in batches; finalizeMarkers will attach markers
+  };
+
+  // Selection helpers (component scope so effects can call them)
+  const clearSelectedMarker = () => {
+    if (selectedMarkerRef.current) {
+      try {
+        selectedMarkerRef.current.setImage(
+          selectedMarkerRef.current.__defaultImage
+        );
+        selectedMarkerRef.current.setZIndex(0);
+      } catch (e) {
+        /* ignore */
+      }
+      selectedMarkerRef.current = null;
+    }
+  };
+
+  const setSelectedMarkerById = (bakeryId?: string | null) => {
+    // clear current selection
+    clearSelectedMarker();
+    if (!bakeryId) return;
+    const found = markersRef.current.find((m: any) => m.bakeryId === bakeryId);
+    if (found) {
+      try {
+        const m = found.marker;
+        m.setImage(m.__selectedImage);
+        m.setZIndex(9999);
+        selectedMarkerRef.current = m;
+      } catch (e) {
+        // ignore
+      }
+    }
   };
 
   // 검색 결과 변경시 마커 업데이트
@@ -260,7 +381,19 @@ export default function MapPage() {
   // 선택된 빵집 변경시 마커 업데이트
   useEffect(() => {
     if (kakaoMapRef.current) {
-      createMarkers(kakaoMapRef.current, filteredBakeries);
+      // highlight the selected marker instead of recreating all markers
+      setSelectedMarkerById(selectedBakery?.id);
+      if (
+        selectedBakery &&
+        selectedBakery.lat !== 0 &&
+        selectedBakery.lng !== 0
+      ) {
+        const moveLatLng = new window.kakao.maps.LatLng(
+          selectedBakery.lat,
+          selectedBakery.lng
+        );
+        kakaoMapRef.current.panTo(moveLatLng);
+      }
     }
   }, [selectedBakery]);
 
@@ -274,7 +407,7 @@ export default function MapPage() {
           const moveLatLng = new window.kakao.maps.LatLng(lat, lng);
           kakaoMapRef.current.panTo(moveLatLng);
         },
-        (error) => {
+        (_error) => {
           alert("현재 위치를 가져올 수 없습니다.");
         }
       );
@@ -360,35 +493,67 @@ export default function MapPage() {
       <div className="grid flex-1 grid-cols-3 gap-4 overflow-hidden">
         {/* Map Area */}
         <Card className="col-span-2 relative overflow-hidden p-0 dark:border-slate-700 dark:bg-slate-800">
-          <div
-            ref={mapRef}
-            className="h-full w-full"
-            style={{ minHeight: "500px" }}
-          />
+          <div ref={mapRef} className="w-full" style={{ height: "600px" }} />
+
+          {/* Map error overlay */}
+          {mapError && (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/90 p-4">
+              <div className="text-center">
+                <p className="text-sm text-red-600">{mapError}</p>
+                <button
+                  className="mt-2 rounded bg-amber-500 px-3 py-1 text-white"
+                  onClick={() => {
+                    setMapError(null);
+                    // try reloading script/init
+                    if (
+                      window.kakao &&
+                      window.kakao.maps &&
+                      kakaoMapRef.current
+                    ) {
+                      createMarkers(kakaoMapRef.current, filteredBakeries);
+                    } else {
+                      window.location.reload();
+                    }
+                  }}
+                >
+                  다시 시도
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Markers loading overlay */}
+          {markersLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/60">
+              <p className="text-sm text-slate-700">마커를 배치하는 중...</p>
+            </div>
+          )}
 
           {/* API Key 안내 메시지 */}
-          <div className="absolute bottom-4 left-4 rounded-lg bg-white/90 p-3 text-xs shadow-lg backdrop-blur-sm dark:bg-slate-800/90">
-            <p className="text-amber-600 dark:text-amber-500">
-              ⚠️ 카카오맵을 사용하려면 API 키가 필요합니다
-            </p>
-            <p className="mt-1 text-slate-600 dark:text-slate-300">
-              MapPage.tsx 파일의 YOUR_KAKAO_MAP_API_KEY를
-              <br />
-              실제 API 키로 교체해주세요
-            </p>
-            <a
-              href="https://developers.kakao.com/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-1 inline-block text-blue-600 hover:underline dark:text-blue-400"
-            >
-              카카오 개발자 센터에서 API 키 발급 →
-            </a>
-          </div>
+          {!(window.kakao && window.kakao.maps) && (
+            <div className="absolute bottom-4 left-4 rounded-lg bg-white/90 p-3 text-xs shadow-lg backdrop-blur-sm dark:bg-slate-800/90">
+              <p className="text-amber-600 dark:text-amber-500">
+                ⚠️ 카카오맵을 사용하려면 API 키가 필요합니다
+              </p>
+              <p className="mt-1 text-slate-600 dark:text-slate-300">
+                MapPage.tsx 파일의 VITE_KAKAO_JAVASCRIPT_KEY를
+                <br />
+                실제 API 키로 교체해주세요
+              </p>
+              <a
+                href="https://developers.kakao.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-block text-blue-600 hover:underline dark:text-blue-400"
+              >
+                카카오 개발자 센터에서 API 키 발급 →
+              </a>
+            </div>
+          )}
 
           {/* Selected Bakery Info Card */}
           {selectedBakery && (
-            <div className="absolute bottom-4 right-4 w-80">
+            <div className="absolute bottom-4 right-4 w-80 z-50">
               <Card className="p-4 shadow-lg dark:border-slate-700 dark:bg-slate-800">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -399,12 +564,6 @@ export default function MapPage() {
                       {selectedBakery.address}
                     </p>
                     <div className="mt-2 flex items-center gap-2">
-                      <div className="flex items-center gap-1">
-                        <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                        <span className="text-sm dark:text-slate-200">
-                          {selectedBakery.rating}
-                        </span>
-                      </div>
                       <span className="text-sm text-slate-500 dark:text-slate-400">
                         {selectedBakery.distance}
                       </span>
@@ -456,7 +615,11 @@ export default function MapPage() {
                 }`}
                 onClick={() => {
                   setSelectedBakery(bakery);
-                  if (kakaoMapRef.current) {
+                  if (
+                    kakaoMapRef.current &&
+                    bakery.lat !== 0 &&
+                    bakery.lng !== 0
+                  ) {
                     const moveLatLng = new window.kakao.maps.LatLng(
                       bakery.lat,
                       bakery.lng
@@ -475,11 +638,15 @@ export default function MapPage() {
                         {bakery.name}
                       </h4>
                       <Heart
-                        className={`h-4 w-4 shrink-0 ${
+                        className={`h-4 w-4 shrink-0 cursor-pointer transition-colors hover:text-amber-500 ${
                           bakery.isWishlisted
                             ? "fill-amber-500 text-amber-500"
                             : "text-slate-300 dark:text-slate-600"
                         }`}
+                        onClick={(e) => {
+                          e.stopPropagation(); // Prevent bakery card click
+                          handleToggleWishlist(bakery.id);
+                        }}
                       />
                     </div>
                     <div className="mt-1 flex items-center gap-2 text-xs">

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Calendar, Star, Image as ImageIcon, Plus, Pencil, Trash2 } from "lucide-react";
+import { Calendar, Star, Image as ImageIcon, Plus, Pencil, Trash2, Search } from "lucide-react";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
@@ -8,7 +8,7 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { useAuth } from "./AuthContext";
 import LoginPrompt from "./LoginPrompt";
-import { visitRecordsAPI, VisitRecord as APIVisitRecord } from "../utils/api-service";
+import { visitRecordsAPI, VisitRecord as APIVisitRecord, bakeryAPI, Bakery } from "../utils/api-service";
 
 interface VisitRecordDisplay {
   id: string;
@@ -57,6 +57,36 @@ export default function VisitedPage() {
     }
   };
 
+  const searchBakeries = async (query: string) => {
+    if (!query.trim()) {
+      setBakerySearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+
+    try {
+      setIsSearching(true);
+      const results = await bakeryAPI.search({ name: query, limit: 10 });
+      setBakerySearchResults(results);
+      setShowSearchResults(true);
+    } catch (error) {
+      console.error("Failed to search bakeries:", error);
+      setBakerySearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const selectBakery = (bakery: Bakery) => {
+    setNewRecord({
+      ...newRecord,
+      bakeryId: bakery.id,
+      bakeryName: bakery.name,
+    });
+    setBakerySearchQuery(bakery.name);
+    setShowSearchResults(false);
+  };
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -75,17 +105,23 @@ export default function VisitedPage() {
     items: "",
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [bakerySearchQuery, setBakerySearchQuery] = useState("");
+  const [bakerySearchResults, setBakerySearchResults] = useState<Bakery[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
   const handleSubmit = async () => {
-    if (!newRecord.bakeryId || !newRecord.review) {
-      alert("빵집과 후기를 모두 입력해주세요.");
+    // Require either bakeryId (from search) or bakeryName (free text)
+    if ((!newRecord.bakeryId && !newRecord.bakeryName) || !newRecord.review) {
+      alert("빵집 이름과 후기를 모두 입력해주세요.");
       return;
     }
 
     try {
       setIsSaving(true);
       await visitRecordsAPI.create({
-        bakery_id: newRecord.bakeryId,
+        bakery_id: newRecord.bakeryId || undefined,
+        bakery_name: newRecord.bakeryId ? undefined : newRecord.bakeryName,
         visit_date: newRecord.visitDate,
         rating: newRecord.rating,
         bread_purchased: newRecord.items,
@@ -102,6 +138,9 @@ export default function VisitedPage() {
         review: "",
         items: "",
       });
+      setBakerySearchQuery("");
+      setBakerySearchResults([]);
+      setShowSearchResults(false);
     } catch (error) {
       console.error("Failed to create visit record:", error);
       alert("방문 기록 추가에 실패했습니다.");
@@ -184,22 +223,64 @@ export default function VisitedPage() {
               방문 기록 추가
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl dark:border-slate-700 dark:bg-slate-800">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto dark:border-slate-700 dark:bg-slate-800">
             <DialogHeader>
               <DialogTitle className="dark:text-slate-100">새 방문 기록 작성</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="bakeryName" className="dark:text-slate-200">빵집 이름</Label>
-                <Input
-                  id="bakeryName"
-                  value={newRecord.bakeryName}
-                  onChange={(e) =>
-                    setNewRecord({ ...newRecord, bakeryName: e.target.value })
-                  }
-                  placeholder="빵집 이름을 입력하세요"
-                  className="dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
-                />
+            <div className="space-y-4 overflow-visible">
+              <div className="relative min-h-[100px]">
+                <Label htmlFor="bakeryName" className="dark:text-slate-200">
+                  빵집 이름 (검색하거나 직접 입력)
+                </Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    id="bakeryName"
+                    value={bakerySearchQuery}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setBakerySearchQuery(value);
+                      setNewRecord({ ...newRecord, bakeryName: value, bakeryId: "" });
+                      searchBakeries(value);
+                    }}
+                    onFocus={() => {
+                      if (bakerySearchQuery && bakerySearchResults.length > 0) {
+                        setShowSearchResults(true);
+                      }
+                    }}
+                    placeholder="빵집 이름을 검색하거나 입력하세요"
+                    className="pl-10 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                  />
+                  {showSearchResults && bakerySearchResults.length > 0 && (
+                    <div className="absolute left-0 right-0 z-50 mt-1 max-h-60 overflow-auto rounded-md border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
+                      {bakerySearchResults.map((bakery) => (
+                        <button
+                          key={bakery.id}
+                          type="button"
+                          onClick={() => selectBakery(bakery)}
+                          className="w-full px-4 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700"
+                        >
+                          <div className="font-medium text-slate-900 dark:text-slate-100">{bakery.name}</div>
+                          <div className="text-sm text-slate-600 dark:text-slate-400">{bakery.address}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="mt-2 min-h-[40px]">
+                  {isSearching && (
+                    <div className="text-sm text-slate-600 dark:text-slate-400">검색 중...</div>
+                  )}
+                  {newRecord.bakeryId ? (
+                    <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                      ✓ 선택됨: {newRecord.bakeryName}
+                    </div>
+                  ) : newRecord.bakeryName ? (
+                    <div className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                      새 빵집으로 저장됨: {newRecord.bakeryName}
+                    </div>
+                  ) : null}
+                </div>
               </div>
               <div>
                 <Label htmlFor="visitDate" className="dark:text-slate-200">방문 날짜</Label>
@@ -260,13 +341,22 @@ export default function VisitedPage() {
                 />
               </div>
               <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="dark:border-slate-600 dark:hover:bg-slate-700">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsDialogOpen(false);
+                    setBakerySearchQuery("");
+                    setBakerySearchResults([]);
+                    setShowSearchResults(false);
+                  }}
+                  className="dark:border-slate-600 dark:hover:bg-slate-700"
+                >
                   취소
                 </Button>
                 <Button
                   onClick={handleSubmit}
                   className="bg-amber-500 hover:bg-amber-600"
-                  disabled={isSaving || !newRecord.bakeryId || !newRecord.review}
+                  disabled={isSaving || (!newRecord.bakeryId && !newRecord.bakeryName) || !newRecord.review}
                 >
                   {isSaving ? "저장 중..." : "저장"}
                 </Button>

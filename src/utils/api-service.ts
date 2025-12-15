@@ -236,7 +236,8 @@ export const visitRecordsAPI = {
    * Create a new visit record
    */
   create: async (data: {
-    bakery_id: string;
+    bakery_id?: string;
+    bakery_name?: string;
     visit_date: string;
     rating: number;
     bread_purchased?: string;
