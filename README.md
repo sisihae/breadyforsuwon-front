@@ -1,5 +1,3 @@
-# Bready for Suwon - API Documentation
-
 ## 📋 Table of Contents
 
 - [Project Overview](#project-overview)
