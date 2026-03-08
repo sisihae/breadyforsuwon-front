@@ -21,12 +21,12 @@
 
 ### Key Features
 
-- ✅ Chatbot powered by Vector DB
-- ✅ Interactive Kakao Map integration
-- ✅ Wishlist & Visit History tracking
-- ✅ Kakao Social Login
-- ✅ Dark mode support
-- ✅ Mobile responsive design
+- Chatbot powered by Vector DB
+- Interactive Kakao Map integration
+- Wishlist & Visit History tracking
+- Kakao Social Login
+- Dark mode support
+- Mobile responsive design
 
 ### Access Control
 
@@ -942,15 +942,6 @@ VITE_PINECONE_API_KEY=your_pinecone_api_key
 VITE_PINECONE_ENVIRONMENT=your_pinecone_environment
 VITE_PINECONE_INDEX=bakery-index
 ```
-
-**Security Note**: Never commit `.env` files to version control. Add to `.gitignore`:
-
-```
-.env
-.env.local
-.env.production
-```
-
 ---
 
 ## 🧪 API Endpoints (Backend Required)
@@ -1126,60 +1117,6 @@ xl: 1280px+ (Large Desktop)
 // Responsive grid
 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
 ```
-
----
-
-## 🐛 Common Issues & Solutions
-
-### Issue: Styles not loading
-
-**Solution**: Ensure `globals.css` is imported in `main.tsx`
-
-### Issue: Kakao Map not displaying
-
-**Solution**:
-
-1. Check API key in `.env`
-2. Verify script tag in `index.html`
-3. Check browser console for errors
-
-### Issue: Dark mode not working
-
-**Solution**: Verify ThemeProvider wraps entire app in `App.tsx`
-
-### Issue: Protected routes accessible without login
-
-**Solution**: Add route guards in components:
-
-```tsx
-const { isLoggedIn } = useAuth();
-if (!isLoggedIn) return <LoginPrompt />;
-```
-
----
-
-## 📚 Additional Resources
-
-- [React Documentation](https://react.dev/)
-- [React Router v7 Docs](https://reactrouter.com/)
-- [Tailwind CSS v4 Docs](https://tailwindcss.com/)
-- [shadcn/ui Components](https://ui.shadcn.com/)
-- [Kakao Developers](https://developers.kakao.com/)
-- [Lucide Icons](https://lucide.dev/)
-
----
-
-## 📄 License
-
-[Add your license information here]
-
----
-
-## 👥 Contributors
-
-[Add contributor information here]
-
----
 
 **Last Updated**: December 2, 2025
 **Version**: 1.0.0
